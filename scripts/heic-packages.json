@@ -1,0 +1,212 @@
+[
+  {
+    "name": "mingw-w64-ucrt-x86_64-SDL2",
+    "filename": "mingw-w64-ucrt-x86_64-SDL2-2.32.10-1-any.pkg.tar.zst",
+    "sha256": "9e77124b14bedaafbfb44ac26e5fb43890184db23292cebf2251b2178fad6693",
+    "size": 1551429
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-aom",
+    "filename": "mingw-w64-ucrt-x86_64-aom-3.15.2-1-any.pkg.tar.zst",
+    "sha256": "e81f01d419f262e31275771fad18f93617f7b321deeb416e5ac39d70f295b286",
+    "size": 3802453
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-brotli",
+    "filename": "mingw-w64-ucrt-x86_64-brotli-1.2.0-1-any.pkg.tar.zst",
+    "sha256": "9cc89665496ea504751476eafba15c71c554aaf3004babc2004f7c07ffd60514",
+    "size": 453708
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-cc-libs",
+    "filename": "mingw-w64-ucrt-x86_64-cc-libs-16.2.0-6-any.pkg.tar.zst",
+    "sha256": "d8fff9e62443168bcda8ce746697243519c4f090ea607357ce94feac0bd10a50",
+    "size": 2343
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-crypto++",
+    "filename": "mingw-w64-ucrt-x86_64-crypto++-8.9.0-2-any.pkg.tar.zst",
+    "sha256": "34a524d2956926791a88f8fed87a0513dd2097c06325a111b241e9dc6da28193",
+    "size": 3055114
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-dav1d",
+    "filename": "mingw-w64-ucrt-x86_64-dav1d-1.5.4-1-any.pkg.tar.zst",
+    "sha256": "ccf26c6f29fd36f5692d57fd5e0fe3becec492e0b875fd5e04f47a9582eb8b37",
+    "size": 903148
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-gettext-runtime",
+    "filename": "mingw-w64-ucrt-x86_64-gettext-runtime-1.0-1-any.pkg.tar.zst",
+    "sha256": "ba693dda4ac375af76ce481ff3a6e7481286546cc7dc6d56c7021dae34084157",
+    "size": 417977
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-giflib",
+    "filename": "mingw-w64-ucrt-x86_64-giflib-6.1.3-1-any.pkg.tar.zst",
+    "sha256": "9e7ac8feb0e2af6e0fce3c8ead1bd7bcaf018661d08033858c1e2657a04f6f1a",
+    "size": 120903
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-jbigkit",
+    "filename": "mingw-w64-ucrt-x86_64-jbigkit-2.1-6-any.pkg.tar.zst",
+    "sha256": "9e237d1041350e7436294cfa13d4bd3d1606d1f2a32ade2eb2958b4d4e79b7ad",
+    "size": 71553
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-kvazaar",
+    "filename": "mingw-w64-ucrt-x86_64-kvazaar-2.3.2-1-any.pkg.tar.zst",
+    "sha256": "1f42ae66c7dd730a7ce8b93bd2fce4896e7b7bd46bb0d2b318c6dd55d5ae12ec",
+    "size": 360268
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-lcms2",
+    "filename": "mingw-w64-ucrt-x86_64-lcms2-2.19.1-1-any.pkg.tar.zst",
+    "sha256": "144518cc80679f7bcc1d31b5dd7ec92e8737a1d8162014e30c8c1c181f47a156",
+    "size": 400720
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-lerc",
+    "filename": "mingw-w64-ucrt-x86_64-lerc-4.1.1-1-any.pkg.tar.zst",
+    "sha256": "c0afbf4832488d67030c6f313349cd814946c9a7bc3ae9fd54524825c9ca055d",
+    "size": 312118
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-libde265",
+    "filename": "mingw-w64-ucrt-x86_64-libde265-1.1.3-1-any.pkg.tar.zst",
+    "sha256": "2d722373ff26d4f281cbfa49e4518ee00aa5d9ccbba0e6cbde7cade50124e9fa",
+    "size": 496133
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-libdeflate",
+    "filename": "mingw-w64-ucrt-x86_64-libdeflate-1.26-1-any.pkg.tar.zst",
+    "sha256": "17720c77bd01641a3554801cafd71d96fb7fff7427f4cc20ac9f36efb8cb3da0",
+    "size": 92465
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-libgcc",
+    "filename": "mingw-w64-ucrt-x86_64-libgcc-16.2.0-6-any.pkg.tar.zst",
+    "sha256": "80b2497f019977dd9528b1abc8621b1328a0115ab1f724047ccbb56bf323f11d",
+    "size": 77191
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-libheif",
+    "filename": "mingw-w64-ucrt-x86_64-libheif-1.23.6-1-any.pkg.tar.zst",
+    "sha256": "1dc60f9d1218d79ab56d3b3ce44b9bcc98e411f6e316db38acb33e9fe4ba21b9",
+    "size": 1123153
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-libiconv",
+    "filename": "mingw-w64-ucrt-x86_64-libiconv-1.19-1-any.pkg.tar.zst",
+    "sha256": "9a500f38c2b91808741c62fae746b3e9110b33a1ecf5c30fa0c66dbedddf7e16",
+    "size": 744750
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-libjpeg-turbo",
+    "filename": "mingw-w64-ucrt-x86_64-libjpeg-turbo-3.2.0-1-any.pkg.tar.zst",
+    "sha256": "7c001d00df557cfee969ad43d37b9c31ae22869e8aac4091a89dc3ae6d95e11d",
+    "size": 791232
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-libpng",
+    "filename": "mingw-w64-ucrt-x86_64-libpng-1.6.59-1-any.pkg.tar.zst",
+    "sha256": "7f8448e06eceba8f8ce130390addea49f767bdf8f6b7e7eede8ca6d595e3d3a8",
+    "size": 402222
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-libstdc++",
+    "filename": "mingw-w64-ucrt-x86_64-libstdc++-16.2.0-6-any.pkg.tar.zst",
+    "sha256": "33c5e58a85a538cf843a8672991cce591f0231d66da3b66a57629712d64be17f",
+    "size": 795910
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-libtiff",
+    "filename": "mingw-w64-ucrt-x86_64-libtiff-4.7.2-2-any.pkg.tar.zst",
+    "sha256": "258e08a91e6b1703d41730ffe6080c2a40968fe90896b45716c1b41042775076",
+    "size": 709209
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-libwebp",
+    "filename": "mingw-w64-ucrt-x86_64-libwebp-1.6.0-1-any.pkg.tar.zst",
+    "sha256": "34ff8396c403d484c8777ad49ad0fc06dfb94fadf6f14bcf84d50c45bc6fd17e",
+    "size": 623411
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-libwinpthread",
+    "filename": "mingw-w64-ucrt-x86_64-libwinpthread-14.0.0.r495.g63ebe6cdb-2-any.pkg.tar.zst",
+    "sha256": "0cee80308aec93607165be8c8655c1c3884389e0c2829b022643de7988d8b1f9",
+    "size": 32044
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-libx264",
+    "filename": "mingw-w64-ucrt-x86_64-libx264-0.165.r3222.b35605a-3-any.pkg.tar.zst",
+    "sha256": "10d3817153fc05832643ebc5da9aec940b4ae2d9dadb6643ac3c282985880434",
+    "size": 819270
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-openh264",
+    "filename": "mingw-w64-ucrt-x86_64-openh264-2.6.0-2-any.pkg.tar.zst",
+    "sha256": "45c07f6ae0cc684d9560f83eb362ec38deb89d483318b20ccf99bc490739444b",
+    "size": 570954
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-openjpeg2",
+    "filename": "mingw-w64-ucrt-x86_64-openjpeg2-2.5.4-2-any.pkg.tar.zst",
+    "sha256": "2a4c148052b6f8e47abe5e98b29fd8942e2e3c17722ff00f172b1630897a10b9",
+    "size": 454223
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-openjph",
+    "filename": "mingw-w64-ucrt-x86_64-openjph-0.32.0-1-any.pkg.tar.zst",
+    "sha256": "5ef96678170cf69ebb553723cf9209e61ce21f85b7afe084da7797d686e98b5c",
+    "size": 371278
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-rav1e",
+    "filename": "mingw-w64-ucrt-x86_64-rav1e-0.8.1-1-any.pkg.tar.zst",
+    "sha256": "00a03a734f96f66405ad79bae2ffb1c5cf2b050ef90a4ffa508ddbfdb64c0fb1",
+    "size": 2450140
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-svt-av1",
+    "filename": "mingw-w64-ucrt-x86_64-svt-av1-4.2.0-1-any.pkg.tar.zst",
+    "sha256": "87c97a68bab7dd67413ea0cae024c3d2e4bdc2f96fccf38365304642b1b44ee5",
+    "size": 3183302
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-tzdata",
+    "filename": "mingw-w64-ucrt-x86_64-tzdata-2026e-1-any.pkg.tar.zst",
+    "sha256": "f1809089f8ed5cec858ae8584289172896eb921be1e78ba583555f74e9015428",
+    "size": 225916
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-vulkan-loader",
+    "filename": "mingw-w64-ucrt-x86_64-vulkan-loader-1~1.4.363.0-1-any.pkg.tar.zst",
+    "sha256": "065076fe13d39ab97eea4740596426d5ae741b5044e48e1c9495d04835c92dbe",
+    "size": 222857
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-x265",
+    "filename": "mingw-w64-ucrt-x86_64-x265-4.3-1-any.pkg.tar.zst",
+    "sha256": "40dd235ba4294266ecad0eec661fae7db25dfe9df2ee9a7c3e07b0d079ae2034",
+    "size": 3647877
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-xz",
+    "filename": "mingw-w64-ucrt-x86_64-xz-5.8.4-1-any.pkg.tar.zst",
+    "sha256": "a9d771f816d8c0c5bde152ffb27a687ede91079b8e77e5b8297efa3b5a835934",
+    "size": 905211
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-zlib",
+    "filename": "mingw-w64-ucrt-x86_64-zlib-1.3.2-2-any.pkg.tar.zst",
+    "sha256": "841401182976d2f9e17e5c0ebaac51f2a8014140ea53d67625e91c8fb3c85ea0",
+    "size": 111475
+  },
+  {
+    "name": "mingw-w64-ucrt-x86_64-zstd",
+    "filename": "mingw-w64-ucrt-x86_64-zstd-1.5.7-2-any.pkg.tar.zst",
+    "sha256": "dbdb8427280046a2b41697780aa4c52983b708082b0da4755951dc3bea96ca89",
+    "size": 668277
+  }
+]

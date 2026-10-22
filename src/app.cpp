@@ -1,0 +1,361 @@
+#include "app.h"
+#include "updates.h"
+#include <thread>
+#include <atomic>
+#include "wheel.h"
+#include "worker.h"
+#include "control_panel.h"
+#include "job_queue.h"
+#include "file_policy.h"
+#include <shellapi.h>
+#include <shlobj.h>
+#include <windowsx.h>
+#include <stdexcept>
+namespace shiftwheel {
+using Microsoft::WRL::ComPtr;
+namespace {
+constexpr UINT wm_tray = WM_APP + 1, wm_trigger = WM_APP + 2, wm_hide = WM_APP + 3, wm_mouse_up = WM_APP + 4;
+constexpr UINT wm_start_next = WM_APP + 5, wm_show_panel = WM_APP + 7, wm_update = WM_APP + 10;
+constexpr UINT menu_preview = 1, menu_cancel = 2, menu_open = 3, menu_exit = 4, menu_tasks = 5, menu_settings = 6, menu_update = 7;
+class App {
+public:
+    ~App() {
+        update_thread_.request_stop();
+        if (update_thread_.joinable()) update_thread_.join();
+        if (mouse_) UnhookWindowsHookEx(mouse_);
+        if (keyboard_) UnhookWindowsHookEx(keyboard_);
+        worker_.shutdown();
+        panel_.shutdown();
+        if (wheel_) wheel_->shutdown();
+        if (tray_) { NOTIFYICONDATAW icon{sizeof(icon)}; icon.hWnd = window_; icon.uID = 1; Shell_NotifyIconW(NIM_DELETE, &icon); }
+        if (window_) DestroyWindow(window_);
+        current_ = nullptr;
+    }
+    void initialize(HINSTANCE instance, bool preview, bool show_panel, bool show_settings, bool update_failed) {
+        update_failed_ = update_failed;
+        current_ = this;
+        std::wstring executable(32768, L'\0');
+        const auto length = GetModuleFileNameW(nullptr, executable.data(), static_cast<DWORD>(executable.size()));
+        if (!length || length >= executable.size()) throw std::runtime_error("Не удалось найти папку настроек.");
+        executable.resize(length); settings_path_ = std::filesystem::path(executable).parent_path() / L"ShiftWheel.ini";
+        try { settings_ = load_settings(settings_path_); }
+        catch (const std::exception& error) { startup_notice_ = L"Настройки не загружены: " + from_utf8(error.what()); }
+        executable_ = executable; settings_.start_with_windows = startup_enabled(executable_);
+        if (update_failed_) startup_notice_ = L"Обновление не установлено. Повторите проверку через меню трея. Автоматические повторы приостановлены до следующего запуска.";
+        WNDCLASSW cls{}; cls.lpfnWndProc = window_proc; cls.hInstance = instance; cls.lpszClassName = L"ShiftWheel.Controller";
+        if (!RegisterClassW(&cls) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) throw std::runtime_error("Не удалось создать окно управления.");
+        window_ = CreateWindowExW(WS_EX_TOOLWINDOW, cls.lpszClassName, L"ShiftWheel", WS_OVERLAPPED, 0, 0, 0, 0, nullptr, nullptr, instance, this);
+        if (!window_) throw std::runtime_error("Не удалось создать окно управления.");
+        wheel_.Attach(new Wheel([this] { return queue_.pending() >= 256; }, [this](std::filesystem::path input, Format format) { enqueue({input}, format); }));
+        wheel_->set_batch_handler([this](std::vector<std::filesystem::path> files, Format format) { enqueue(files, format); });
+        wheel_->set_format_provider([this](const std::filesystem::path& input) { return configured_formats(input, settings_); });
+        if (FAILED(wheel_->initialize(instance))) throw std::runtime_error("Не удалось создать колесо или зарегистрировать приём файлов.");
+        PanelActions actions;
+        actions.cancel = [this] { cancel(); };
+        actions.pause_queue = [this] { queue_.set_paused(!queue_.paused()); refresh(); PostMessageW(window_, wm_start_next, 0, 0); };
+        actions.clear_queue = [this] { queue_.clear_pending(); refresh(); PostMessageW(window_, wm_start_next, 0, 0); };
+        actions.remove = [this](uint64_t id) { queue_.remove(id); refresh(); PostMessageW(window_, wm_start_next, 0, 0); };
+        actions.open_result = [this](uint64_t id) { if (auto job = queue_.find(id); job && !job->output.empty()) reveal(job->output); };
+        actions.retry = [this](uint64_t id) {
+            if (auto job = queue_.find(id); job && job->state != JobState::Queued && job->state != JobState::Running) {
+                if (!supported_local_file(job->input)) throw std::runtime_error("Исходный файл больше недоступен.");
+                const auto snapshot = *job;
+                queue_.enqueue({snapshot.input}, snapshot.format, snapshot.options, snapshot.output_directory);
+                refresh(); PostMessageW(window_, wm_start_next, 1, 0);
+            }
+        };
+        actions.save = [this](const Settings& next) {
+            if (!next.output_directory.empty()) {
+                validate_local_path(next.output_directory, false);
+                if (!std::filesystem::is_directory(next.output_directory)) throw std::runtime_error("Выберите существующую папку результата.");
+            }
+            if (!next.update_channel.empty() && !https_url(next.update_channel)) throw std::runtime_error("Укажите корректный HTTPS-адрес канала обновлений.");
+            const auto previous = settings_;
+            save_settings(settings_path_, next);
+            try { if (next.start_with_windows != settings_.start_with_windows) set_startup(executable_, next.start_with_windows); }
+            catch (...) { save_settings(settings_path_, previous); throw; }
+            settings_ = next; startup_notice_.clear();
+            ++update_generation_; pending_setup_.clear();
+            SetTimer(window_, 2, 30000, nullptr);
+            wheel_->hide(); panel_.set_settings(settings_); refresh();
+        };
+        if (FAILED(panel_.initialize(instance, settings_, std::move(actions)))) throw std::runtime_error("Не удалось создать окно задач.");
+        add_tray();
+        taskbar_created_ = RegisterWindowMessageW(L"TaskbarCreated");
+        keyboard_ = SetWindowsHookExW(WH_KEYBOARD_LL, keyboard_proc, instance, 0);
+        mouse_ = SetWindowsHookExW(WH_MOUSE_LL, mouse_proc, instance, 0);
+        if (!keyboard_ || !mouse_) throw std::runtime_error("Windows не разрешила наблюдение за жестом перетаскивания.");
+        left_shift_ = (GetAsyncKeyState(VK_LSHIFT) & 0x8000) != 0;
+        right_shift_ = (GetAsyncKeyState(VK_RSHIFT) & 0x8000) != 0;
+        if (preview) { POINT point{}; GetCursorPos(&point); wheel_->show(point, true); }
+        refresh();
+        if (show_panel || show_settings) panel_.show(show_settings);
+        SetTimer(window_, 2, 30000, nullptr);
+    }
+    bool pretranslate(MSG& message) { return panel_.handle() && IsWindowVisible(panel_.handle()) && IsDialogMessageW(panel_.handle(), &message); }
+private:
+    static const wchar_t* status(JobState state) {
+        switch (state) {
+        case JobState::Queued: return L"Ожидает";
+        case JobState::Running: return L"Конвертация";
+        case JobState::Succeeded: return L"Готово";
+        case JobState::Failed: return L"Ошибка";
+        case JobState::Cancelled: return L"Отменено";
+        }
+        return L"";
+    }
+    void enqueue(const std::vector<std::filesystem::path>& files, Format format) {
+        try {
+            for (const auto& input : files) if (!supported_local_file(input)) throw std::runtime_error("Один из исходных файлов недоступен.");
+            queue_.enqueue(files, format, settings_.conversion, settings_.output_directory);
+            PostMessageW(window_, wm_start_next, 1, 0);
+        } catch (const std::exception& error) { balloon(L"Не удалось добавить файлы", from_utf8(error.what()), NIIF_ERROR); throw; }
+    }
+    void cancel() { if (worker_.busy()) { cancelling_ = true; worker_.cancel(); refresh(); } }
+    void start_next(bool new_admission) {
+        if (!worker_.busy() && !queue_.pending() && !pending_setup_.empty()) {
+            try { launch_update_helper(pending_setup_, executable_, pending_hash_); PostQuitMessage(0); }
+            catch (const std::exception& e) { balloon(L"Обновление отложено", from_utf8(e.what()), NIIF_ERROR); pending_setup_.clear(); }
+            return;
+        }
+        const bool show = new_admission && settings_.auto_show_progress && !IsWindowVisible(panel_.handle());
+        if (worker_.busy()) { refresh(); if (show) panel_.show(false, false); return; }
+        while (auto job = queue_.next()) {
+            const auto snapshot = *job;
+            queue_.start(snapshot.id); cancelling_ = false;
+            try {
+                worker_.start(snapshot.input, snapshot.format, window_, snapshot.options, snapshot.output_directory);
+                started_ = GetTickCount64(); tooltip(L"ShiftWheel — конвертация…"); break;
+            } catch (const std::exception& error) {
+                queue_.complete(snapshot.id, JobState::Failed, {}, from_utf8(error.what()));
+                balloon(L"Не удалось начать", from_utf8(error.what()), NIIF_ERROR);
+            }
+        }
+        refresh();
+        if (show) panel_.show(false, false);
+    }
+    void refresh() {
+        PanelState state; state.queue_paused = queue_.paused(); state.running = worker_.busy();
+        state.headline = queue_.paused() ? L"Очередь приостановлена" : L"Готов к конвертации";
+        state.detail = startup_notice_.empty() ? L"Перетащите файлы и удерживайте Shift. В очереди: " + std::to_wstring(queue_.pending()) : startup_notice_;
+        if (auto active = queue_.active()) {
+            const auto progress = worker_.progress();
+            state.headline = cancelling_ ? L"Отменяем конвертацию…" : active->input.filename().wstring();
+            state.percent = cancelling_ ? -1 : progress.percent;
+            state.detail = (progress.stage.empty() ? L"Подготовка" : progress.stage) + L" · " + std::to_wstring((GetTickCount64() - started_) / 1000) + L" с · В очереди: " + std::to_wstring(queue_.pending());
+        }
+        auto add = [&](const ConversionJob& job) {
+            const bool pending = job.state == JobState::Queued, running = job.state == JobState::Running;
+            auto detail = job.input.wstring();
+            if (!job.message.empty()) detail += L"\r\n" + job.message;
+            if (!job.output.empty()) detail += L"\r\nРезультат: " + job.output.wstring();
+            state.jobs.push_back({job.id, job.input.filename().wstring(), label(job.format), status(job.state), std::move(detail), !pending && !running, pending, job.state == JobState::Succeeded});
+        };
+        for (const auto& job : queue_.items()) if (job.state == JobState::Running || job.state == JobState::Queued) add(job);
+        for (auto it = queue_.items().rbegin(); it != queue_.items().rend(); ++it) if (it->state != JobState::Running && it->state != JobState::Queued) add(*it);
+        panel_.update(state);
+    }
+    static void reveal(const std::filesystem::path& path) {
+        if (!std::filesystem::exists(path)) throw std::runtime_error("Файл результата больше не существует.");
+        PIDLIST_ABSOLUTE item = ILCreateFromPathW(path.c_str());
+        if (!item) throw std::runtime_error("Не удалось найти результат в Проводнике.");
+        const HRESULT result = SHOpenFolderAndSelectItems(item, 0, nullptr, 0); ILFree(item);
+        if (FAILED(result)) throw std::runtime_error("Не удалось открыть Проводник.");
+    }
+    void add_tray() {
+        NOTIFYICONDATAW icon{sizeof(icon)}; icon.hWnd = window_; icon.uID = 1;
+        icon.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP; icon.uCallbackMessage = wm_tray;
+        icon.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+        wcscpy_s(icon.szTip, L"ShiftWheel · перетащи файл и зажми Shift");
+        tray_ = Shell_NotifyIconW(NIM_ADD, &icon) != FALSE;
+        if (tray_) { icon.uVersion = NOTIFYICON_VERSION_4; Shell_NotifyIconW(NIM_SETVERSION, &icon); }
+    }
+    void tooltip(const wchar_t* text) {
+        NOTIFYICONDATAW icon{sizeof(icon)}; icon.hWnd = window_; icon.uID = 1; icon.uFlags = NIF_TIP;
+        wcsncpy_s(icon.szTip, text, _TRUNCATE); Shell_NotifyIconW(NIM_MODIFY, &icon);
+    }
+    void balloon(const std::wstring& title, const std::wstring& message, DWORD type) {
+        NOTIFYICONDATAW icon{sizeof(icon)}; icon.hWnd = window_; icon.uID = 1; icon.uFlags = NIF_INFO; icon.dwInfoFlags = type;
+        wcsncpy_s(icon.szInfoTitle, title.c_str(), _TRUNCATE); wcsncpy_s(icon.szInfo, message.c_str(), _TRUNCATE);
+        Shell_NotifyIconW(NIM_MODIFY, &icon);
+    }
+    void check_updates(bool manual) {
+        if (checking_ || !pending_setup_.empty()) return;
+        if (settings_.update_channel.empty()) { if (manual) balloon(L"Обновления", L"Задайте HTTPS-канал в настройках.", NIIF_INFO); return; }
+        if (!manual && (update_failed_ || !settings_.automatic_updates)) return;
+        if (update_thread_.joinable()) update_thread_.join();
+        checking_ = true;
+        const auto channel = settings_.update_channel; const auto installed = installed_copy(executable_); const auto generation = update_generation_;
+        update_thread_ = std::jthread([this, channel, installed, manual, generation](std::stop_token stop) {
+            std::wstring notice; std::filesystem::path setup; std::wstring hash;
+            try { auto release = fetch_update(channel, stop);
+                if (!newer_version(release.version, app_version)) notice = L"Установлена актуальная версия.";
+                else if (!installed) notice = L"Доступна версия " + release.version + L". Для автоматической установки используйте установленную копию.";
+                else { setup = download_update(release, stop); hash = release.sha256; notice = L"Обновление загружено. Установка начнётся после завершения очереди."; }
+            } catch (const std::exception& e) { notice = from_utf8(e.what()); }
+            update_result_generation_ = generation;
+            update_notice_ = std::move(notice); update_setup_ = std::move(setup); update_hash_ = std::move(hash); update_manual_ = manual;
+            PostMessageW(window_, wm_update, 0, 0);
+        });
+    }
+    void menu() {
+        POINT point{}; GetCursorPos(&point);
+        HMENU menu = CreatePopupMenu();
+        AppendMenuW(menu, MF_STRING, menu_tasks, L"Задачи и история");
+        AppendMenuW(menu, MF_STRING, menu_settings, L"Настройки");
+        AppendMenuW(menu, MF_STRING, menu_preview, L"Посмотреть колесо");
+        AppendMenuW(menu, MF_STRING | (worker_.busy() ? 0 : MF_GRAYED), menu_cancel, L"Отменить конвертацию");
+        AppendMenuW(menu, MF_STRING | (last_output_.empty() ? MF_GRAYED : 0), menu_open, L"Открыть папку результата");
+        AppendMenuW(menu, MF_STRING, menu_update, L"Проверить обновления");
+        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+        AppendMenuW(menu, MF_STRING, menu_exit, L"Выход");
+        SetForegroundWindow(window_);
+        UINT command = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, point.x, point.y, 0, window_, nullptr);
+        DestroyMenu(menu); PostMessageW(window_, WM_NULL, 0, 0);
+        switch (command) {
+        case menu_preview: wheel_->show(point, true); break;
+        case menu_cancel: cancel(); break;
+        case menu_tasks: refresh(); panel_.show(); break;
+        case menu_settings: panel_.show(true); break;
+        case menu_open: open_output(); break;
+        case menu_update: check_updates(true); break;
+        case menu_exit: PostMessageW(window_, WM_CLOSE, 0, 0); break;
+        }
+    }
+    void open_output() {
+        if (!last_output_.empty()) reveal(last_output_);
+    }
+    static bool explorer_at(POINT point) {
+        HWND source = GetAncestor(WindowFromPoint(point), GA_ROOT);
+        wchar_t name[128]{}; GetClassNameW(source, name, 128);
+        return wcscmp(name, L"CabinetWClass") == 0 || wcscmp(name, L"ExploreWClass") == 0 || wcscmp(name, L"Progman") == 0 || wcscmp(name, L"WorkerW") == 0;
+    }
+    void maybe_trigger() {
+        if (gesture_.move(pointer_.x, pointer_.y, left_shift_ || right_shift_, GetSystemMetrics(SM_CXDRAG), GetSystemMetrics(SM_CYDRAG)))
+            PostMessageW(window_, wm_trigger, 0, 0);
+    }
+    static LRESULT CALLBACK mouse_proc(int code, WPARAM message, LPARAM data) {
+        auto self = current_;
+        if (code == HC_ACTION && self) {
+            const auto event = reinterpret_cast<MSLLHOOKSTRUCT*>(data);
+            self->pointer_ = event->pt;
+            if (message == WM_LBUTTONDOWN) self->gesture_.begin(event->pt.x, event->pt.y, explorer_at(event->pt));
+            else if (message == WM_MOUSEMOVE && self->gesture_.active()) self->maybe_trigger();
+            else if (message == WM_LBUTTONUP) {
+                self->gesture_.end();
+                // OLE in the source process must receive mouse-up before we hide.
+                PostMessageW(self->window_, wm_mouse_up, 0, 0);
+            }
+        }
+        return CallNextHookEx(nullptr, code, message, data);
+    }
+    static LRESULT CALLBACK keyboard_proc(int code, WPARAM message, LPARAM data) {
+        auto self = current_;
+        if (code == HC_ACTION && self) {
+            const auto key = reinterpret_cast<KBDLLHOOKSTRUCT*>(data)->vkCode;
+            const bool down = message == WM_KEYDOWN || message == WM_SYSKEYDOWN;
+            const bool up = message == WM_KEYUP || message == WM_SYSKEYUP;
+            if ((down || up) && (key == VK_LSHIFT || key == VK_RSHIFT || key == VK_SHIFT)) {
+                if (key == VK_RSHIFT) self->right_shift_ = down; else self->left_shift_ = down;
+                if (self->left_shift_ || self->right_shift_) self->maybe_trigger();
+                else { self->gesture_.shift_released(); PostMessageW(self->window_, wm_hide, 0, 0); }
+            }
+            if (down && key == VK_ESCAPE) PostMessageW(self->window_, wm_hide, 0, 0);
+        }
+        return CallNextHookEx(nullptr, code, message, data);
+    }
+    static LRESULT CALLBACK window_proc(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
+        auto self = reinterpret_cast<App*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+        if (message == WM_NCCREATE) { self = static_cast<App*>(reinterpret_cast<CREATESTRUCTW*>(l)->lpCreateParams); SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(self)); }
+        if (!self) return DefWindowProcW(hwnd, message, w, l);
+        if (self->taskbar_created_ && message == self->taskbar_created_) { self->add_tray(); return 0; }
+        try { switch (message) {
+        case wm_tray:
+            if (LOWORD(l) == WM_CONTEXTMENU || LOWORD(l) == WM_RBUTTONUP) self->menu();
+            if (LOWORD(l) == WM_LBUTTONDBLCLK) { self->refresh(); self->panel_.show(); }
+            if (LOWORD(l) == NIN_BALLOONUSERCLICK) self->open_output();
+            return 0;
+        case wm_trigger:
+            if (self->queue_.pending() < 256 && (GetAsyncKeyState(VK_LBUTTON) & 0x8000) && (GetAsyncKeyState(VK_SHIFT) & 0x8000)) {
+                POINT point{}; GetCursorPos(&point); self->wheel_->show(point);
+            }
+            return 0;
+        case wm_hide: if (self->wheel_) self->wheel_->hide(); return 0;
+        case wm_mouse_up:
+            if (self->wheel_ && self->wheel_->visible()) SetTimer(hwnd, 1, 250, nullptr);
+            return 0;
+        case wm_update:
+            if (self->update_thread_.joinable()) self->update_thread_.join();
+            self->checking_ = false;
+            if (self->update_result_generation_ != self->update_generation_) { if (!self->update_setup_.empty()) { std::error_code ec; std::filesystem::remove(self->update_setup_, ec); } return 0; }
+            if (!self->update_setup_.empty()) { self->pending_setup_ = std::move(self->update_setup_); self->pending_hash_ = self->update_hash_; }
+            if (self->update_manual_ || !self->pending_setup_.empty()) self->balloon(L"Обновления ShiftWheel", self->update_notice_, NIIF_INFO);
+            PostMessageW(hwnd, wm_start_next, 0, 0); return 0;
+        case WM_TIMER:
+            if (w == 2) { SetTimer(hwnd, 2, 24 * 60 * 60 * 1000, nullptr); self->check_updates(false); return 0; }
+            KillTimer(hwnd, w);
+            if (!(GetAsyncKeyState(VK_LBUTTON) & 0x8000) && self->wheel_ && !self->wheel_->has_ole_drag()) self->wheel_->hide();
+            return 0;
+        case wm_worker_done:
+            if (self->worker_.busy()) {
+                auto result = self->worker_.finish();
+                if (auto job = self->queue_.active()) self->queue_.complete(job->id, result.success ? JobState::Succeeded : result.cancelled ? JobState::Cancelled : JobState::Failed, result.success ? result.output : std::filesystem::path{}, result.message);
+                if (result.success) self->last_output_ = result.output;
+                self->balloon(result.success ? L"Готово" : result.cancelled ? L"Отменено" : L"Ошибка конвертации", result.message, result.success || result.cancelled ? NIIF_INFO : NIIF_ERROR);
+                self->tooltip(L"ShiftWheel · перетащи файл и зажми Shift");
+                self->refresh(); PostMessageW(hwnd, wm_start_next, 0, 0);
+            }
+            return 0;
+        case wm_worker_progress: self->refresh(); return 0;
+        case wm_start_next: self->start_next(w != 0); return 0;
+        case wm_show_panel: self->refresh(); self->panel_.show(w != 0); return 0;
+        case WM_CLOSE: PostQuitMessage(0); return 0;
+        } } catch (const std::exception& error) { self->balloon(L"Ошибка", from_utf8(error.what()), NIIF_ERROR); return 0; }
+        return DefWindowProcW(hwnd, message, w, l);
+    }
+    static App* current_;
+    std::filesystem::path executable_, pending_setup_, update_setup_;
+    std::wstring pending_hash_, update_hash_, update_notice_;
+    std::jthread update_thread_;
+    std::atomic<bool> checking_{false};
+    bool update_manual_ = false, update_failed_ = false;
+    unsigned update_generation_ = 0, update_result_generation_ = 0;
+    HWND window_ = nullptr;
+    HHOOK mouse_ = nullptr, keyboard_ = nullptr;
+    bool tray_ = false, left_shift_ = false, right_shift_ = false;
+    UINT taskbar_created_ = 0;
+    POINT pointer_{};
+    Gesture gesture_;
+    Worker worker_;
+    ControlPanel panel_;
+    Settings settings_;
+    JobQueue queue_;
+    std::filesystem::path settings_path_;
+    std::wstring startup_notice_;
+    bool cancelling_ = false;
+    ULONGLONG started_ = 0;
+    ComPtr<Wheel> wheel_;
+    std::filesystem::path last_output_;
+};
+App* App::current_ = nullptr;
+}
+int run_app(HINSTANCE instance, bool preview, bool panel, bool settings, bool startup, bool update_failed) {
+    HANDLE mutex = CreateMutexW(nullptr, FALSE, L"Local\\ShiftWheel.Tray");
+    if (!mutex) return 1;
+    if (GetLastError() == ERROR_ALREADY_EXISTS) {
+        if (!startup) if (auto window = FindWindowW(L"ShiftWheel.Controller", L"ShiftWheel")) PostMessageW(window, wm_show_panel, settings ? 1 : 0, 0);
+        CloseHandle(mutex); return 0;
+    }
+    int result = 0;
+    try {
+        App app; app.initialize(instance, preview, panel, settings, update_failed);
+        MSG message{}; BOOL status = 0;
+        while ((status = GetMessageW(&message, nullptr, 0, 0)) > 0) { if (!app.pretranslate(message)) { TranslateMessage(&message); DispatchMessageW(&message); } }
+        if (status == -1) result = 1;
+    } catch (const std::exception& error) {
+        MessageBoxW(nullptr, from_utf8(error.what()).c_str(), L"ShiftWheel", MB_OK | MB_ICONERROR);
+        result = 1;
+    }
+    CloseHandle(mutex); return result;
+}
+}

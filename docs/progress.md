@@ -1,0 +1,25 @@
+# Execution ledger — plan: docs/superpowers/plans/2026-10-22-shift-wheel.md
+
+- User confirmed C++ + Win32 + Direct2D after the product plan.
+- Decision: implement the already proposed first prototype in this turn; retain universal conversion in the roadmap.
+- Decision: build in place in the empty, dedicated repository; .git is read-only and no baseline commit exists. No branches or commits will be created.
+- Decision: use Windows WIC for the first image formats to avoid new runtime dependencies.
+- Pre-flight: policy -> wheel and converter -> worker interfaces defined in plan; no interface conflicts found.
+- Environment: installed VS Build Tools and Windows SDK found outside PATH; use bundled CMake with the VS generator.
+- Builder check: no missing user decisions. Parent owns cancellation cleanup; worker starts suspended then enters kill-on-close Job Object; reject path aliases/reparse points and create temporary file exclusively.
+- Build investigation: MSBuild parallel node startup stalled in sandbox; serial build with nodeReuse:false completed in 4.4 seconds without warnings. Build script now uses that mode.
+- Task 1 RED: all six policy test groups failed against stubs, for expected missing behavior.
+- Task 1 complete: six policy groups pass, Release build has no warnings.
+- Task 2 RED: four real conversion groups failed against throwing stub. GREEN: seven image groups pass, including alpha, real JPEG pixels, Unicode paths and preservation of existing source/output/temp files.
+- Task 3 RED: tray smoke failed against no-op app stub. Initial real-app test failure traced to PowerShell converting null string parameter into empty title for FindWindow; enumeration showed both real windows existed. Fixed test to use the actual title.
+- Decision: private staging subfolder in the destination directory; parent owns only this newly created directory and waits for process termination before deleting its known files.
+- Task 3 implemented: tray, event observers, Direct2D wheel, isolated worker, real OLE contract tests and own-process smoke. Actual Explorer drag remains an explicitly pending manual acceptance check.
+- Final review: fresh agent, no Critical; two P2 findings fixed with RED -> GREEN regressions (foreign output + cancellation; ancestor junction admission).
+- Decision: cancellation requires successful worker exit to report success; a published file is never deleted, even if cancellation races with publication. Cost: a completed file can remain after a cancellation notification.
+- Decision: active OLE drag is never hidden by the mouse-up fallback timer; lifecycle callbacks handle its end. Delay before initial OLE entry remains a manual-check item.
+- Final: minor deferred — redundant DragOver invalidation; missing separate fixtures for EXIF/dimension/multiframe/final-publication collision. Listed in docs/verification.md, not claimed covered.
+- Verification: full Release CTest 6/6 passed outside sandbox because junction creation is denied by sandbox. Build and other tests work within sandbox. The approval review allowed this local test; no action remains approval-blocked.
+- Test portability: replaced Get-FileHash with .NET SHA-256 after the clean test environment lacked the PowerShell cmdlet.
+- Delivery decisions: retain files in the empty working folder, no git metadata changes; prototype supports images only, with universal conversion roadmap preserved.
+- Final verification after test-script changes: Release CTest 6/6 pass in 3.53 seconds. Ten-second tray sample: 0.0 ms CPU over 10006 ms; 12.9 MiB working set. Binary has only system DLL dependencies.
+- Packaging: portable EXE and start guide under out/ShiftWheel; manual Explorer/DPI acceptance remains pending and is prominently documented.
