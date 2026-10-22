@@ -1,6 +1,7 @@
 #include "app.h"
 #include "updates.h"
 #include "diagnostics.h"
+#include "tray_notifications.h"
 #include <shobjidl.h>
 #include <thread>
 #include <atomic>
@@ -18,6 +19,7 @@ using Microsoft::WRL::ComPtr;
 namespace {
 constexpr UINT wm_tray = WM_APP + 1, wm_trigger = WM_APP + 2, wm_hide = WM_APP + 3, wm_mouse_up = WM_APP + 4;
 constexpr UINT wm_start_next = WM_APP + 5, wm_show_panel = WM_APP + 7, wm_update = WM_APP + 10;
+constexpr UINT wm_next_notification = WM_APP + 11;
 constexpr UINT menu_preview = 1, menu_cancel = 2, menu_open = 3, menu_exit = 4, menu_tasks = 5, menu_settings = 6, menu_update = 7;
 class App {
 public:
@@ -194,21 +196,29 @@ private:
     }
     void add_tray() {
         NOTIFYICONDATAW icon{sizeof(icon)}; icon.hWnd = window_; icon.uID = 1;
-        icon.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP; icon.uCallbackMessage = wm_tray;
+        icon.uFlags = NIF_MESSAGE | NIF_ICON | tray_tooltip_flags; icon.uCallbackMessage = wm_tray;
         icon.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
         wcscpy_s(icon.szTip, L"ShiftWheel · перетащи файл и зажми Shift");
         tray_ = Shell_NotifyIconW(NIM_ADD, &icon) != FALSE;
         if (tray_) { icon.uVersion = NOTIFYICON_VERSION_4; Shell_NotifyIconW(NIM_SETVERSION, &icon); }
     }
     void tooltip(const wchar_t* text) {
-        NOTIFYICONDATAW icon{sizeof(icon)}; icon.hWnd = window_; icon.uID = 1; icon.uFlags = NIF_TIP;
+        NOTIFYICONDATAW icon{sizeof(icon)}; icon.hWnd = window_; icon.uID = 1; icon.uFlags = tray_tooltip_flags;
         wcsncpy_s(icon.szTip, text, _TRUNCATE); Shell_NotifyIconW(NIM_MODIFY, &icon);
     }
     void balloon(const std::wstring& title, const std::wstring& message, DWORD type, const std::filesystem::path& target = {}) {
-        notification_output_ = target;
-        NOTIFYICONDATAW icon{sizeof(icon)}; icon.hWnd = window_; icon.uID = 1; icon.uFlags = NIF_INFO; icon.dwInfoFlags = type;
-        wcsncpy_s(icon.szInfoTitle, title.c_str(), _TRUNCATE); wcsncpy_s(icon.szInfo, message.c_str(), _TRUNCATE);
-        Shell_NotifyIconW(NIM_MODIFY, &icon);
+        notifications_.push({title,message,type,target});
+        PostMessageW(window_,wm_next_notification,0,0);
+    }
+    void next_notification() {
+        if(!tray_) return;
+        while(notifications_.begin()) {
+            const auto& next=*notifications_.current();
+            NOTIFYICONDATAW icon{sizeof(icon)}; icon.hWnd=window_; icon.uID=1; icon.uFlags=NIF_INFO; icon.dwInfoFlags=next.type;
+            wcsncpy_s(icon.szInfoTitle,next.title.c_str(),_TRUNCATE); wcsncpy_s(icon.szInfo,next.message.c_str(),_TRUNCATE);
+            if(Shell_NotifyIconW(NIM_MODIFY,&icon)) return;
+            notifications_.finish();
+        }
     }
     void check_updates(bool manual) {
         if (checking_ || !pending_setup_.empty()) return;
@@ -299,13 +309,20 @@ private:
         auto self = reinterpret_cast<App*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
         if (message == WM_NCCREATE) { self = static_cast<App*>(reinterpret_cast<CREATESTRUCTW*>(l)->lpCreateParams); SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(self)); }
         if (!self) return DefWindowProcW(hwnd, message, w, l);
-        if (self->taskbar_created_ && message == self->taskbar_created_) { self->add_tray(); return 0; }
+        if (self->taskbar_created_ && message == self->taskbar_created_) {
+            self->notifications_.restart(); self->add_tray(); PostMessageW(hwnd,wm_next_notification,0,0); return 0;
+        }
         try { switch (message) {
         case wm_tray:
             if (LOWORD(l) == WM_CONTEXTMENU || LOWORD(l) == WM_RBUTTONUP) self->menu();
             if (LOWORD(l) == WM_LBUTTONDBLCLK) { self->refresh(); self->panel_.show(); }
-            if (LOWORD(l) == NIN_BALLOONUSERCLICK && !self->notification_output_.empty()) self->reveal(self->notification_output_);
+            if(LOWORD(l)==NIN_BALLOONUSERCLICK || LOWORD(l)==NIN_BALLOONHIDE || LOWORD(l)==NIN_BALLOONTIMEOUT) {
+                const auto target=self->notifications_.finish();
+                PostMessageW(hwnd,wm_next_notification,0,0);
+                if(LOWORD(l)==NIN_BALLOONUSERCLICK && !target.empty()) self->reveal(target);
+            }
             return 0;
+        case wm_next_notification: self->next_notification(); return 0;
         case wm_trigger:
             if (self->queue_.pending() < 256 && (GetAsyncKeyState(VK_LBUTTON) & 0x8000) && (GetAsyncKeyState(VK_SHIFT) & 0x8000)) {
                 POINT point{}; GetCursorPos(&point); self->wheel_->show(point);
@@ -375,7 +392,8 @@ private:
     bool cancelling_ = false;
     ULONGLONG started_ = 0;
     ComPtr<Wheel> wheel_;
-    std::filesystem::path last_output_, notification_output_;
+    std::filesystem::path last_output_;
+    TrayNotifications notifications_;
     ULONGLONG tray_progress_tick_ = 0;
 };
 App* App::current_ = nullptr;
