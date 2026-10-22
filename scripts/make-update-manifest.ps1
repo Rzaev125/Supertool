@@ -1,4 +1,4 @@
-param([string]$Version='0.6.0',[string]$Repository='Rzaev125/Supertool')
+param([string]$Version='0.7.0',[string]$Repository='Rzaev125/Supertool')
 $ErrorActionPreference='Stop'
 Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1') -Force
 if ($Version -notmatch '^\d{1,5}\.\d{1,5}\.\d{1,5}$' -or $Repository -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { throw 'Invalid version or repository.' }

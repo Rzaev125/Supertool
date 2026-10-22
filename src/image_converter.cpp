@@ -1,4 +1,5 @@
 #include "image_converter.h"
+#include "diagnostics.h"
 #include "policy.h"
 #include "file_policy.h"
 #include <windows.h>
@@ -14,7 +15,10 @@ namespace {
 namespace fs = std::filesystem;
 using Microsoft::WRL::ComPtr;
 void require_hr(HRESULT value, const char* message) {
-    if (FAILED(value)) throw std::runtime_error(std::string(message) + " (код " + std::to_string(static_cast<unsigned long>(value)) + ")");
+    if (FAILED(value)) {
+        const auto code = HRESULT_FACILITY(value)==FACILITY_WIN32 ? HRESULT_CODE(value) : value==STG_E_MEDIUMFULL ? ERROR_DISK_FULL : value==STG_E_ACCESSDENIED ? ERROR_ACCESS_DENIED : ERROR_GEN_FAILURE;
+        throw std::runtime_error(file_error(code,message));
+    }
 }
 struct Handle {
     HANDLE value = INVALID_HANDLE_VALUE;
@@ -104,7 +108,7 @@ void convert_image(const fs::path& input_arg, const fs::path& output_arg, const 
     try {
         {
             Handle source{CreateFileW(input.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr)};
-            if (source.value == INVALID_HANDLE_VALUE) throw std::runtime_error("Не удалось открыть исходный файл для чтения.");
+            if (source.value == INVALID_HANDLE_VALUE) throw std::runtime_error(file_error(GetLastError(),"Не удалось открыть исходный файл для чтения."));
             BY_HANDLE_FILE_INFORMATION info{};
             if (!GetFileInformationByHandle(source.value, &info) || (info.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)))
                 throw std::runtime_error("Нужен обычный локальный файл.");
@@ -231,7 +235,7 @@ void convert_image(const fs::path& input_arg, const fs::path& output_arg, const 
             require_hr(stream->Commit(STGC_DEFAULT), "Ошибка сохранения на диск");
         }
         if (!MoveFileExW(temporary.c_str(), output.c_str(), MOVEFILE_WRITE_THROUGH))
-            throw std::runtime_error("Не удалось сохранить результат. Возможно, имя уже занято или нет доступа.");
+            throw std::runtime_error(file_error(GetLastError(),"Не удалось сохранить результат."));
         owned_temporary = false;
     } catch (...) {
         if (owned_temporary) DeleteFileW(temporary.c_str());

@@ -27,7 +27,7 @@ constexpr auto run_key=L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 void get(const std::wstring& url,unsigned long long limit,std::ostream& output,std::stop_token stop){
  if(!https_url(url))fail(); URL_COMPONENTS u{sizeof(u)};u.dwHostNameLength=u.dwUrlPathLength=u.dwExtraInfoLength=static_cast<DWORD>(-1);
  if(!WinHttpCrackUrl(url.c_str(),0,0,&u))fail();std::wstring host(u.lpszHostName,u.dwHostNameLength),path(u.lpszUrlPath,u.dwUrlPathLength); if(u.dwExtraInfoLength)path.append(u.lpszExtraInfo,u.dwExtraInfoLength);
- Http session{WinHttpOpen(L"ShiftWheel/0.6",WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,nullptr,nullptr,0)};if(!session.h)fail();WinHttpSetTimeouts(session.h,5000,5000,5000,5000);
+ Http session{WinHttpOpen(L"ShiftWheel/0.7",WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,nullptr,nullptr,0)};if(!session.h)fail();WinHttpSetTimeouts(session.h,5000,5000,5000,5000);
  Http conn{WinHttpConnect(session.h,host.c_str(),u.nPort,0)};if(!conn.h)fail();
  Http req{WinHttpOpenRequest(conn.h,L"GET",path.c_str(),nullptr,WINHTTP_NO_REFERER,WINHTTP_DEFAULT_ACCEPT_TYPES,WINHTTP_FLAG_SECURE)};if(!req.h)fail();
  DWORD policy=WINHTTP_OPTION_REDIRECT_POLICY_DISALLOW_HTTPS_TO_HTTP; if(!WinHttpSetOption(req.h,WINHTTP_OPTION_REDIRECT_POLICY,&policy,sizeof(policy)))fail();

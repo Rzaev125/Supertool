@@ -16,6 +16,15 @@ int main() {
     struct Cleanup { fs::path p; ~Cleanup() { fs::remove_all(p); } } cleanup{root};
     int failed = 0;
     auto run = [&](const char* name, auto test) { try { test(); std::cout << "PASS " << name << '\n'; } catch (const std::exception& e) { ++failed; std::cerr << "FAIL " << name << ": " << e.what() << '\n'; } };
+    run("quiet preferences preserve explicit legacy settings", [&] {
+        write(root / "legacy-visible.ini", "version=1\nauto_show_progress=1\n");
+        check(load_settings(root / "legacy-visible.ini").auto_show_progress, "explicit old preference overwritten");
+        for(auto mode : {NotificationMode::All,NotificationMode::Errors,NotificationMode::None}) {
+            Settings s; s.notifications=mode;save_settings(root/"notify.ini",s);
+            check(load_settings(root/"notify.ini").notifications==mode,"notification preference lost");
+        }
+        write(root/"bad-notify.ini","notifications=maybe\n");rejected([&]{load_settings(root/"bad-notify.ini");});
+    });
     run("update preferences roundtrip without worker leakage", [&] {
         Settings s; s.automatic_updates = false; s.update_channel = L"https://example.com/stable.txt";
         save_settings(root / "updates.ini", s); auto restored = load_settings(root / "updates.ini");
@@ -28,7 +37,7 @@ int main() {
         const auto s = load_settings(root / "missing.ini");
         check(s.conversion.quality == QualityPreset::Balanced && s.conversion.resources == ResourceMode::Balanced && s.conversion.pdf_dpi == 144, "legacy defaults changed");
         check(s.conversion.image_max_dimension == 0 && s.conversion.video_max_height == 0 && s.conversion.audio_bitrate_kbps == 0, "default override");
-        check(s.output_directory.empty() && s.auto_show_progress && configured_formats(L"photo.png", s).size() == 7, "default behavior changed");
+        check(s.output_directory.empty() && !s.auto_show_progress && configured_formats(L"photo.png", s).size() == 7, "quiet default missing");
         check(s.conversion.pdf_ocr && s.conversion.ocr_languages == "eng+rus+aze", "OCR language defaults");
         rejected([&] { load_options(root / "missing-options.ini"); });
     });

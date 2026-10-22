@@ -1,4 +1,5 @@
 #include "file_policy.h"
+#include "diagnostics.h"
 #include "policy.h"
 #include <windows.h>
 #include <stdexcept>
@@ -18,7 +19,8 @@ void validate_local_path(const std::filesystem::path& path, bool require_file) {
     }
     if (require_file) {
         auto attrs = GetFileAttributesW(path.c_str());
-        if (attrs == INVALID_FILE_ATTRIBUTES || (attrs & FILE_ATTRIBUTE_DIRECTORY)) throw std::runtime_error("Исходный файл недоступен.");
+        if (attrs == INVALID_FILE_ATTRIBUTES) throw std::runtime_error(file_error(GetLastError(),"Исходный файл недоступен."));
+        if (attrs & FILE_ATTRIBUTE_DIRECTORY) throw std::runtime_error("Выберите файл, а не папку.");
     }
 }
 bool supported_local_file(const std::filesystem::path& path) noexcept {

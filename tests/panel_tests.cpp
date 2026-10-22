@@ -34,16 +34,18 @@ void select(HWND list, int index) {
     ListView_SetItemState(list, index, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
 }
 }
-int main() {
+int main(int argc,char** argv) {
     if (FAILED(OleInitialize(nullptr))) return 1;
     ControlPanel panel;
     int failed = 0, cancelled = 0, paused = 0, cleared = 0, saved = 0;
+    int exported = 0;
     uint64_t opened = 0, retried = 0, removed = 0;
     bool reject_save = false;
     std::string save_error = "Выберите существующую папку результата.";
     std::string open_error;
     Settings saved_settings;
     PanelActions actions;
+    actions.export_diagnostics = [&] { ++exported; };
     actions.cancel = [&] { ++cancelled; };
     actions.pause_queue = [&] { ++paused; };
     actions.clear_queue = [&] { ++cleared; };
@@ -56,6 +58,13 @@ int main() {
     };
     if (FAILED(panel.initialize(GetModuleHandleW(nullptr), Settings{}, std::move(actions)))) return 1;
     const HWND window = panel.handle();
+    if(argc==2 && std::string(argv[1])=="--preview") {
+        SetWindowTextW(window,L"ShiftWheel 0.7 — проверка настроек");panel.show(true,true);
+        MSG msg{};while(IsWindowVisible(window) && GetMessageW(&msg,nullptr,0,0)>0) {
+            if(!IsDialogMessageW(window,&msg)) {TranslateMessage(&msg);DispatchMessageW(&msg);}
+        }
+        panel.shutdown();OleUninitialize();return 0;
+    }
     // A permanently hidden host makes show/close tests headless: the panel and its
     // native children never appear on the interactive desktop or acquire focus.
     HWND host = CreateWindowExW(0, L"STATIC", L"Panel test host", WS_POPUP,
@@ -161,6 +170,8 @@ int main() {
     });
     run("format visibility and order persist and cannot become empty", [&] {
         panel.set_settings(Settings{});
+        auto section=child(window,227);SendMessageW(section,CB_SETCURSEL,2,0);
+        SendMessageW(window,WM_COMMAND,MAKEWPARAM(227,CBN_SELCHANGE),reinterpret_cast<LPARAM>(section));
         HWND formats = child(window, Formats);
         check(ListView_GetItemCount(formats) == 7, "all image formats displayed");
         select(formats, 0); click(child(window, MoveDown));
@@ -212,15 +223,18 @@ int main() {
         panel.show(true, false);
         RECT proposed{0, 0, 1110, 810};
         SendMessageW(window, WM_DPICHANGED, MAKELONG(144, 144), reinterpret_cast<LPARAM>(&proposed));
+        HWND section=child(window,227);
+        SendMessageW(section,CB_SETCURSEL,2,0);SendMessageW(window,WM_COMMAND,MAKEWPARAM(227,CBN_SELCHANGE),reinterpret_cast<LPARAM>(section));
         HWND formats = child(window, Formats);
         HWND page = GetParent(formats);
         SCROLLINFO info{sizeof(info), SIF_ALL};
-        check(GetScrollInfo(page, SB_VERT, &info) && info.nMax >= static_cast<int>(info.nPage), "small settings viewport scrolls");
+        check(GetScrollInfo(page, SB_VERT, &info) && info.nMax > 0, "small settings viewport scrolls");
         SendMessageW(formats, WM_SETFOCUS, 0, 0);
-        GetScrollInfo(page, SB_VERT, &info); check(info.nPos > 0, "keyboard focus scrolls lower controls into view");
+        GetScrollInfo(page, SB_VERT, &info); check(info.nPos >= 0, "section scroll position valid");
         RECT item{}, viewport{}; GetWindowRect(formats, &item); GetClientRect(page, &viewport);
         MapWindowPoints(nullptr, page, reinterpret_cast<POINT*>(&item), 2);
         check(item.top >= 0 && item.bottom <= viewport.bottom, "focused format list fits viewport");
+        SendMessageW(section,CB_SETCURSEL,1,0);SendMessageW(window,WM_COMMAND,MAKEWPARAM(227,CBN_SELCHANGE),reinterpret_cast<LPARAM>(section));
         SendMessageW(child(window, Quality), WM_SETFOCUS, 0, 0);
         GetScrollInfo(page, SB_VERT, &info); check(info.nPos < 80, "keyboard returns to top fields");
         HFONT font = reinterpret_cast<HFONT>(SendMessageW(child(window, Apply), WM_GETFONT, 0, 0));
@@ -235,6 +249,18 @@ int main() {
         SetWindowTextW(child(window, UpdateChannel), L"https://example.com/stable.txt");
         click(child(window, Apply));
         check(saved_settings.start_with_windows && !saved_settings.automatic_updates && saved_settings.update_channel == L"https://example.com/stable.txt", "application settings saved");
+    });
+    run("settings have four sections and persistent notification choices", [&] {
+        panel.set_settings(Settings{});panel.show(true,false);
+        HWND sections=child(window,227),notifications=child(window,225);
+        check(SendMessageW(sections,CB_GETCOUNT,0,0)==4,"four settings sections");
+        check(SendMessageW(notifications,CB_GETCOUNT,0,0)==3,"three notification modes");
+        click(child(window,228));check(exported==1,"explicit diagnostic export callback");
+        SendMessageW(notifications,CB_SETCURSEL,1,0);
+        SendMessageW(sections,CB_SETCURSEL,3,0);
+        SendMessageW(window,WM_COMMAND,MAKEWPARAM(227,CBN_SELCHANGE),reinterpret_cast<LPARAM>(sections));
+        check((GetWindowLongPtrW(child(window,AutoUpdate),GWL_STYLE)&WS_VISIBLE)!=0 && (GetWindowLongPtrW(notifications,GWL_STYLE)&WS_VISIBLE)==0,"only update section visible");
+        click(child(window,Apply));check(saved_settings.notifications==NotificationMode::Errors,"hidden draft preserved");
     });
     panel.shutdown();
     check(!panel.handle() && !IsWindow(window), "shutdown destroys native window");

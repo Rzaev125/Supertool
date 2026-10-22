@@ -1,4 +1,5 @@
 #include "worker.h"
+#include "diagnostics.h"
 #include "engines.h"
 #include "file_policy.h"
 #include <objbase.h>
@@ -18,6 +19,7 @@ Worker::~Worker() { shutdown(); }
 JobProgress Worker::progress() const { std::lock_guard lock(progress_mutex_); return progress_; }
 void Worker::start(const fs::path& input, Format format, HWND notify, const ConversionOptions& options, const fs::path& output_directory) {
     if (busy()) throw std::runtime_error("Дождитесь завершения текущей конвертации.");
+    validate_local_path(input.lexically_normal(),true);
     if (!supported_local_file(input) || !supports_conversion(input, format)) throw std::runtime_error("Это преобразование недоступно.");
     validate_options(options);
     const auto destination = (output_directory.empty() ? input.parent_path() : output_directory).lexically_normal();
@@ -40,7 +42,7 @@ void Worker::start(const fs::path& input, Format format, HWND notify, const Conv
     GUID guid{}; if (FAILED(CoCreateGuid(&guid))) throw std::runtime_error("Не удалось создать идентификатор задачи.");
     wchar_t token[40]{}; StringFromGUID2(guid, token, 40);
     staging_ = destination / (std::wstring(L".shiftwheel-") + token);
-    if (!CreateDirectoryW(staging_.c_str(), nullptr)) { staging_.clear(); throw std::runtime_error("Нет доступа для записи в папку результата."); }
+    if (!CreateDirectoryW(staging_.c_str(), nullptr)) { staging_.clear(); throw std::runtime_error(file_error(GetLastError(),"Не удалось создать временную папку результата.")); }
     SetFileAttributesW(staging_.c_str(), FILE_ATTRIBUTE_HIDDEN);
     temporary_ = staging_ / L"result.tmp";
     PROCESS_INFORMATION info{};
@@ -137,6 +139,10 @@ WorkerResult Worker::finish() {
         std::ifstream error(temporary_.wstring() + L".error.txt", std::ios::binary);
         std::string message{std::istreambuf_iterator<char>(error), {}};
         result.message = message.empty() ? L"Конвертер завершился с ошибкой. Оригинал сохранён." : from_utf8(message);
+    }
+    if(!result.success && !result.cancelled) {
+        ULARGE_INTEGER free{};if(GetDiskFreeSpaceExW(output_.parent_path().c_str(),&free,nullptr,nullptr)&&free.QuadPart==0)
+            result.message=from_utf8(file_error(ERROR_DISK_FULL,"Не удалось завершить конвертацию."));
     }
     cleanup(); return result;
 }

@@ -1,5 +1,7 @@
 #include "app.h"
 #include "updates.h"
+#include "diagnostics.h"
+#include <shobjidl.h>
 #include <thread>
 #include <atomic>
 #include "wheel.h"
@@ -40,6 +42,8 @@ public:
         executable.resize(length); settings_path_ = std::filesystem::path(executable).parent_path() / L"ShiftWheel.ini";
         try { settings_ = load_settings(settings_path_); }
         catch (const std::exception& error) { startup_notice_ = L"Настройки не загружены: " + from_utf8(error.what()); }
+        diagnostic_ = std::make_unique<DiagnosticLog>(settings_path_.parent_path()/L"ShiftWheel.diagnostics.log");
+        diagnostic_->append("session-start");
         executable_ = executable; settings_.start_with_windows = startup_enabled(executable_);
         if (update_failed_) startup_notice_ = L"Обновление не установлено. Повторите проверку через меню трея. Автоматические повторы приостановлены до следующего запуска.";
         WNDCLASSW cls{}; cls.lpfnWndProc = window_proc; cls.hInstance = instance; cls.lpszClassName = L"ShiftWheel.Controller";
@@ -51,10 +55,11 @@ public:
         wheel_->set_format_provider([this](const std::filesystem::path& input) { return configured_formats(input, settings_); });
         if (FAILED(wheel_->initialize(instance))) throw std::runtime_error("Не удалось создать колесо или зарегистрировать приём файлов.");
         PanelActions actions;
+        actions.export_diagnostics = [this] { export_diagnostics(); };
         actions.cancel = [this] { cancel(); };
         actions.pause_queue = [this] { queue_.set_paused(!queue_.paused()); refresh(); PostMessageW(window_, wm_start_next, 0, 0); };
-        actions.clear_queue = [this] { queue_.clear_pending(); refresh(); PostMessageW(window_, wm_start_next, 0, 0); };
-        actions.remove = [this](uint64_t id) { queue_.remove(id); refresh(); PostMessageW(window_, wm_start_next, 0, 0); };
+        actions.clear_queue = [this] { queue_.clear_pending(); notify_finished_batches(); refresh(); PostMessageW(window_, wm_start_next, 0, 0); };
+        actions.remove = [this](uint64_t id) { queue_.remove(id); notify_finished_batches(); refresh(); PostMessageW(window_, wm_start_next, 0, 0); };
         actions.open_result = [this](uint64_t id) { if (auto job = queue_.find(id); job && !job->output.empty()) reveal(job->output); };
         actions.retry = [this](uint64_t id) {
             if (auto job = queue_.find(id); job && job->state != JobState::Queued && job->state != JobState::Running) {
@@ -104,12 +109,29 @@ private:
         }
         return L"";
     }
+    void export_diagnostics() {
+        ComPtr<IFileSaveDialog> dialog;
+        if(FAILED(CoCreateInstance(CLSID_FileSaveDialog,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&dialog)))) throw std::runtime_error("Не удалось открыть выбор файла отчёта.");
+        dialog->SetTitle(L"Сохранить диагностику ShiftWheel");
+        dialog->SetOptions(FOS_FORCEFILESYSTEM|FOS_PATHMUSTEXIST|FOS_DONTADDTORECENT);
+        dialog->SetDefaultExtension(L"txt");
+        const auto name=L"ShiftWheel-diagnostics-"+std::to_wstring(GetTickCount64())+L".txt";
+        dialog->SetFileName(name.c_str());
+        const auto shown=dialog->Show(panel_.handle());
+        if(shown == HRESULT_FROM_WIN32(ERROR_CANCELLED)) return;
+        if(FAILED(shown)) throw std::runtime_error("Не удалось выбрать файл отчёта.");
+        ComPtr<IShellItem> item;PWSTR path=nullptr;
+        if(FAILED(dialog->GetResult(&item))||FAILED(item->GetDisplayName(SIGDN_FILESYSPATH,&path))) throw std::runtime_error("Не удалось прочитать путь отчёта.");
+        const std::filesystem::path destination(path);CoTaskMemFree(path);
+        validate_local_path(destination,false);diagnostic_->export_to(destination);
+    }
     void enqueue(const std::vector<std::filesystem::path>& files, Format format) {
         try {
             for (const auto& input : files) if (!supported_local_file(input)) throw std::runtime_error("Один из исходных файлов недоступен.");
             queue_.enqueue(files, format, settings_.conversion, settings_.output_directory);
+            diagnostic_->append("conversion-queued",queue_.items().back().id);
             PostMessageW(window_, wm_start_next, 1, 0);
-        } catch (const std::exception& error) { balloon(L"Не удалось добавить файлы", from_utf8(error.what()), NIIF_ERROR); throw; }
+        } catch (const std::exception& error) { diagnostic_->append("admission-rejected"); if(settings_.notifications != NotificationMode::None) balloon(L"Не удалось добавить файлы", from_utf8(error.what()), NIIF_ERROR); throw; }
     }
     void cancel() { if (worker_.busy()) { cancelling_ = true; worker_.cancel(); refresh(); } }
     void start_next(bool new_admission) {
@@ -127,12 +149,20 @@ private:
                 worker_.start(snapshot.input, snapshot.format, window_, snapshot.options, snapshot.output_directory);
                 started_ = GetTickCount64(); tooltip(L"ShiftWheel — конвертация…"); break;
             } catch (const std::exception& error) {
+                diagnostic_->append("conversion-start-failed",snapshot.id);
                 queue_.complete(snapshot.id, JobState::Failed, {}, from_utf8(error.what()));
-                balloon(L"Не удалось начать", from_utf8(error.what()), NIIF_ERROR);
+                notify_finished_batches();
             }
         }
         refresh();
         if (show) panel_.show(false, false);
+    }
+    void notify_finished_batches() {
+        for(const auto& group : queue_.take_batch_outcomes()) {
+            if(!notify_batch(settings_.notifications, group)) continue;
+            auto message=group.total == 1 ? group.last_message : std::to_wstring(group.succeeded)+L" готово, "+std::to_wstring(group.failed)+L" ошибок, "+std::to_wstring(group.cancelled)+L" отменено";
+            balloon(group.failed ? L"Конвертация: есть ошибки" : L"Конвертация завершена", message, group.failed ? NIIF_ERROR : NIIF_INFO, group.last_output);
+        }
     }
     void refresh() {
         PanelState state; state.queue_paused = queue_.paused(); state.running = worker_.busy();
@@ -174,7 +204,8 @@ private:
         NOTIFYICONDATAW icon{sizeof(icon)}; icon.hWnd = window_; icon.uID = 1; icon.uFlags = NIF_TIP;
         wcsncpy_s(icon.szTip, text, _TRUNCATE); Shell_NotifyIconW(NIM_MODIFY, &icon);
     }
-    void balloon(const std::wstring& title, const std::wstring& message, DWORD type) {
+    void balloon(const std::wstring& title, const std::wstring& message, DWORD type, const std::filesystem::path& target = {}) {
+        notification_output_ = target;
         NOTIFYICONDATAW icon{sizeof(icon)}; icon.hWnd = window_; icon.uID = 1; icon.uFlags = NIF_INFO; icon.dwInfoFlags = type;
         wcsncpy_s(icon.szInfoTitle, title.c_str(), _TRUNCATE); wcsncpy_s(icon.szInfo, message.c_str(), _TRUNCATE);
         Shell_NotifyIconW(NIM_MODIFY, &icon);
@@ -273,7 +304,7 @@ private:
         case wm_tray:
             if (LOWORD(l) == WM_CONTEXTMENU || LOWORD(l) == WM_RBUTTONUP) self->menu();
             if (LOWORD(l) == WM_LBUTTONDBLCLK) { self->refresh(); self->panel_.show(); }
-            if (LOWORD(l) == NIN_BALLOONUSERCLICK) self->open_output();
+            if (LOWORD(l) == NIN_BALLOONUSERCLICK && !self->notification_output_.empty()) self->reveal(self->notification_output_);
             return 0;
         case wm_trigger:
             if (self->queue_.pending() < 256 && (GetAsyncKeyState(VK_LBUTTON) & 0x8000) && (GetAsyncKeyState(VK_SHIFT) & 0x8000)) {
@@ -299,14 +330,22 @@ private:
         case wm_worker_done:
             if (self->worker_.busy()) {
                 auto result = self->worker_.finish();
+                self->diagnostic_->append(result.success ? "conversion-succeeded" : result.cancelled ? "conversion-cancelled" : "conversion-failed",self->queue_.active() ? self->queue_.active()->id : 0);
                 if (auto job = self->queue_.active()) self->queue_.complete(job->id, result.success ? JobState::Succeeded : result.cancelled ? JobState::Cancelled : JobState::Failed, result.success ? result.output : std::filesystem::path{}, result.message);
                 if (result.success) self->last_output_ = result.output;
-                self->balloon(result.success ? L"Готово" : result.cancelled ? L"Отменено" : L"Ошибка конвертации", result.message, result.success || result.cancelled ? NIIF_INFO : NIIF_ERROR);
+                self->notify_finished_batches();
                 self->tooltip(L"ShiftWheel · перетащи файл и зажми Shift");
                 self->refresh(); PostMessageW(hwnd, wm_start_next, 0, 0);
             }
             return 0;
-        case wm_worker_progress: self->refresh(); return 0;
+        case wm_worker_progress:
+            self->refresh();
+            if(GetTickCount64()-self->tray_progress_tick_ >= 1000) {
+                const auto progress=self->worker_.progress();
+                auto text=L"ShiftWheel · "+(progress.percent >= 0 ? std::to_wstring(progress.percent)+L"% · " : std::wstring{})+progress.stage;
+                self->tooltip(text.c_str());self->tray_progress_tick_=GetTickCount64();
+            }
+            return 0;
         case wm_start_next: self->start_next(w != 0); return 0;
         case wm_show_panel: self->refresh(); self->panel_.show(w != 0); return 0;
         case WM_CLOSE: PostQuitMessage(0); return 0;
@@ -329,13 +368,15 @@ private:
     Worker worker_;
     ControlPanel panel_;
     Settings settings_;
+    std::unique_ptr<DiagnosticLog> diagnostic_;
     JobQueue queue_;
     std::filesystem::path settings_path_;
     std::wstring startup_notice_;
     bool cancelling_ = false;
     ULONGLONG started_ = 0;
     ComPtr<Wheel> wheel_;
-    std::filesystem::path last_output_;
+    std::filesystem::path last_output_, notification_output_;
+    ULONGLONG tray_progress_tick_ = 0;
 };
 App* App::current_ = nullptr;
 }

@@ -5,6 +5,23 @@ using namespace shiftwheel;
 void check(bool value, const char* message) { if (!value) throw std::runtime_error(message); }
 int main() {
     try {
+        BatchOutcome outcome;outcome.failed=1;
+        check(notify_batch(NotificationMode::Errors,outcome) && !notify_batch(NotificationMode::None,outcome),"notification filtering");
+        outcome.failed=0;check(!notify_batch(NotificationMode::Errors,outcome) && notify_batch(NotificationMode::All,outcome),"success filtering");
+        JobQueue batches;
+        batches.enqueue({L"a.png",L"b.png"}, Format::Jpeg, {}, {});
+        batches.enqueue({L"c.png"}, Format::Jpeg, {}, {});
+        auto id1=batches.next()->id; batches.start(id1); batches.complete(id1,JobState::Succeeded,L"a.jpg",L"ready");
+        check(batches.take_batch_outcomes().empty(),"group notified before all files finished");
+        auto id2=batches.next()->id;batches.start(id2);batches.complete(id2,JobState::Failed,{},L"broken");
+        auto summaries=batches.take_batch_outcomes();
+        check(summaries.size()==1 && summaries[0].total==2 && summaries[0].succeeded==1 && summaries[0].failed==1 && summaries[0].last_output==L"a.jpg","separate group outcome");
+        check(batches.take_batch_outcomes().empty(),"duplicate summary");
+        batches.clear_pending();summaries=batches.take_batch_outcomes();
+        check(summaries.size()==1 && summaries[0].cancelled==1,"removed pending group never finishes");
+        JobQueue large;std::vector<std::filesystem::path> many(256,L"a.png");large.enqueue(many,Format::Jpeg,{},{});
+        for(int i=0;i<256;++i){auto id=large.next()->id;large.start(id);large.complete(id,JobState::Succeeded,L"a.jpg",L"ready");}
+        summaries=large.take_batch_outcomes();check(summaries.size()==1 && summaries[0].succeeded==256,"history trimming lost batch outcomes");
         JobQueue queue;
         ConversionOptions compact; compact.quality = QualityPreset::Compact;
         queue.enqueue({L"first.png", L"second.webp"}, Format::Jpeg, compact, L"C:\\results");

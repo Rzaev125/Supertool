@@ -104,6 +104,15 @@ int main() {
             check(okay, "argument must survive CreateProcess parsing");
         }
     });
+    run("negative screen coordinates, DPI thresholds and repeated gesture cancellation", [] {
+        for(int threshold : {4,6,8}) {
+            Gesture g;g.begin(-1900,-300,true);
+            check(!g.move(-1900+threshold,-300+threshold,true,threshold,threshold),"threshold boundary stays neutral");
+            check(g.move(-1900+threshold+1,-300,true,threshold,threshold),"Shift held before drag triggers");
+            g.end();check(!g.active(),"mouse release ends tracking");
+            for(int i=0;i<500;++i){g.begin(-100,100,true);check(!g.move(-80,120,false,threshold,threshold),"late Shift waits");check(g.move(-80,120,true,threshold,threshold),"late Shift triggers");g.shift_released();g.end();}
+        }
+    });
     run("gesture threshold and rearm", [] {
         Gesture g;
         g.begin(100, 100, true);

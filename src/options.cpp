@@ -52,6 +52,7 @@ const char* category_key(Category category) {
 }
 void validate_settings(const Settings& settings) {
     validate_options(settings.conversion);
+    if (settings.notifications != NotificationMode::All && settings.notifications != NotificationMode::Errors && settings.notifications != NotificationMode::None) invalid();
     if (settings.update_channel.size() > 4096 || settings.update_channel.find_first_of(L"\r\n\t ") != std::wstring::npos || (!settings.update_channel.empty() && !settings.update_channel.starts_with(L"https://"))) invalid();
     auto path = settings.output_directory.wstring();
     if (path.size() > 16000 || path.find_first_of(std::wstring_view(L"\r\n\0", 3)) != std::wstring::npos) invalid();
@@ -119,6 +120,11 @@ Settings read_config(const fs::path& path, bool options_only, bool missing_allow
         if (!keys.insert(std::string(key)).second) invalid();
         if (key == "version") { if (value != "1") invalid(); }
         else if (conversion_field(settings.conversion, key, value)) {}
+        else if (!options_only && key == "notifications") {
+            if(value == "all") settings.notifications = NotificationMode::All;
+            else if(value == "errors") settings.notifications = NotificationMode::Errors;
+            else if(value == "none") settings.notifications = NotificationMode::None; else invalid();
+        }
         else if (!options_only && key == "automatic_updates") { if (value != "0" && value != "1") invalid(); settings.automatic_updates = value == "1"; }
         else if (!options_only && key == "update_channel") settings.update_channel = wide(value);
         else if (!options_only && key == "output_directory") settings.output_directory = wide(value);
@@ -200,6 +206,7 @@ void save_options(const fs::path& path, const ConversionOptions& options) { writ
 void save_settings(const fs::path& path, const Settings& settings) {
     validate_settings(settings);
     auto text = serialize_options(settings.conversion) + "auto_show_progress=" + (settings.auto_show_progress ? "1\n" : "0\n") + "output_directory=" + narrow(settings.output_directory.wstring()) + "\n";
+    text += "notifications=" + std::string(settings.notifications == NotificationMode::All ? "all" : settings.notifications == NotificationMode::Errors ? "errors" : "none") + "\n";
     text += "automatic_updates=" + std::string(settings.automatic_updates ? "1\n" : "0\n") + "update_channel=" + narrow(settings.update_channel) + "\n";
     for (const auto& [category, formats] : settings.wheels) {
         text += std::string("wheel.") + category_key(category) + "=";

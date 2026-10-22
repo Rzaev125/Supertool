@@ -18,7 +18,7 @@ enum Control : int {
     Cancel, Pause, Clear, Open, Retry, Remove,
     Quality = 200, Resources, ImageSize, VideoSize, AudioBitrate, PdfDpi,
     Output, Browse, AutoShow, CategoryChoice, Formats, MoveUp, MoveDown,
-    Apply, Defaults, SettingsError, PdfOcr, OcrEnglish, OcrRussian, OcrAzerbaijani, Acceleration, Startup, AutoUpdate, UpdateChannel, UpdateLabel,
+    Apply, Defaults, SettingsError, PdfOcr, OcrEnglish, OcrRussian, OcrAzerbaijani, Acceleration, Startup, AutoUpdate, UpdateChannel, UpdateLabel, Notifications, NotificationsLabel, SettingsSection, ExportDiagnostics,
     QualityLabel = 300, ResourcesLabel, ImageLabel, VideoLabel, AudioLabel,
     PdfLabel, OutputLabel, OutputHint, WheelLabel, WheelHint, CategoryLabel, AccelerationLabel
 };
@@ -96,7 +96,7 @@ struct ControlPanel::Impl {
     HFONT font = nullptr, heading_font = nullptr;
     HBRUSH background = CreateSolidBrush(RGB(250, 251, 253));
     UINT dpi = 96;
-    int scroll = 0, category_index = 0;
+    int scroll = 0, category_index = 0, settings_section = 0;
     bool settings_visible = false, rebuilding = false;
     Settings draft;
     PanelState state;
@@ -173,6 +173,9 @@ struct ControlPanel::Impl {
         task(Retry, L"BUTTON", L"Повторить", WS_TABSTOP);
         task(Remove, L"BUTTON", L"Убрать из очереди", WS_TABSTOP);
 
+        settings_controls.push_back(add(window, SettingsSection, L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST));
+        for(auto section : {L"Основные",L"Конвертация",L"Колесо",L"Обновления"}) SendMessageW(main_control(SettingsSection),CB_ADDSTRING,0,reinterpret_cast<LPARAM>(section));
+        SendMessageW(main_control(SettingsSection),CB_SETCURSEL,0,0);
         page = CreateWindowExW(WS_EX_CONTROLPARENT, page_class, L"", WS_CHILD | WS_VSCROLL | WS_CLIPCHILDREN,
             0, 0, 0, 0, window, nullptr, instance, this);
         if (!page) return false;
@@ -202,6 +205,9 @@ struct ControlPanel::Impl {
         add(page, Browse, L"BUTTON", L"Обзор…", WS_TABSTOP);
         label_control(OutputHint, L"Оставьте пустым, чтобы сохранять рядом с исходным файлом.");
         add(page, AutoShow, L"BUTTON", L"Показывать окно при запуске преобразования", WS_TABSTOP | BS_AUTOCHECKBOX);
+        label_control(NotificationsLabel, L"Уведомления о конвертации"); combo(Notifications);
+        for(auto mode : {L"Все результаты",L"Только ошибки",L"Без уведомлений"}) SendMessageW(setting(Notifications),CB_ADDSTRING,0,reinterpret_cast<LPARAM>(mode));
+        add(page, ExportDiagnostics, L"BUTTON", L"Экспорт диагностики…", WS_TABSTOP);
         add(page, Startup, L"BUTTON", L"Запускать вместе с Windows", WS_TABSTOP | BS_AUTOCHECKBOX);
         add(page, AutoUpdate, L"BUTTON", L"Автоматически проверять и устанавливать обновления", WS_TABSTOP | BS_AUTOCHECKBOX);
         label_control(UpdateLabel, L"Канал обновлений (HTTPS)");
@@ -230,39 +236,40 @@ struct ControlPanel::Impl {
             std::all_of(settings_controls.begin(), settings_controls.end(), [](HWND control) { return control != nullptr; });
     }
 
+    int section_height() const { return settings_section == 0 ? 360 : settings_section == 1 ? 330 : settings_section == 2 ? 265 : 180; }
     void layout_page() {
         if (!page) return;
-        RECT rect{}; GetClientRect(page, &rect);
-        const int width = MulDiv(rect.right, 96, static_cast<int>(dpi));
-        const int half = (width - 60) / 2, right = 40 + half;
-        for (const auto& row : {std::array<int, 5>{QualityLabel, Quality, ResourcesLabel, Resources, 2},
-                               std::array<int, 5>{ImageLabel, ImageSize, VideoLabel, VideoSize, 66},
-                               std::array<int, 5>{AudioLabel, AudioBitrate, PdfLabel, PdfDpi, 130}}) {
-            move_setting(row[0], 20, row[4], half, 23); move_setting(row[1], 20, row[4] + 26, half, 200);
-            move_setting(row[2], right, row[4], half, 23); move_setting(row[3], right, row[4] + 26, half, 200);
-            if (row[1] != Quality) move_setting(row[1], 20, row[4] + 26, half, 29);
-            if (row[3] != Resources) move_setting(row[3], right, row[4] + 26, half, 29);
+        const std::vector<std::vector<int>> groups{
+            {AutoShow,Startup,NotificationsLabel,Notifications,OutputLabel,Output,Browse,OutputHint,ExportDiagnostics},
+            {QualityLabel,Quality,ResourcesLabel,Resources,ImageLabel,ImageSize,VideoLabel,VideoSize,AudioLabel,AudioBitrate,PdfLabel,PdfDpi,AccelerationLabel,Acceleration,PdfOcr,OcrEnglish,OcrRussian,OcrAzerbaijani},
+            {WheelLabel,WheelHint,CategoryLabel,CategoryChoice,Formats,MoveUp,MoveDown},
+            {AutoUpdate,UpdateLabel,UpdateChannel}};
+        for(size_t i=0;i<groups.size();++i) for(auto id:groups[i]) ShowWindow(setting(id),i==static_cast<size_t>(settings_section)?SW_SHOW:SW_HIDE);
+        RECT rect{}; GetClientRect(page,&rect);
+        const int width=MulDiv(rect.right,96,static_cast<int>(dpi)), half=(width-60)/2,right=40+half;
+        if(settings_section == 0) {
+            move_setting(AutoShow,20,10,width-40,28); move_setting(Startup,20,48,width-40,28);
+            move_setting(NotificationsLabel,20,94,width-40,24);move_setting(Notifications,20,124,width-40,150);
+            move_setting(OutputLabel,20,172,width-40,24);move_setting(Output,20,202,width-152,29);move_setting(Browse,width-122,202,102,29);
+            move_setting(OutputHint,20,238,width-40,40);move_setting(ExportDiagnostics,20,300,240,32);
+            EnableWindow(setting(ExportDiagnostics),static_cast<bool>(actions.export_diagnostics));
+        } else if(settings_section == 1) {
+            for(const auto& row : {std::array<int,5>{QualityLabel,Quality,ResourcesLabel,Resources,2},
+                std::array<int,5>{ImageLabel,ImageSize,VideoLabel,VideoSize,66},std::array<int,5>{AudioLabel,AudioBitrate,PdfLabel,PdfDpi,130}}) {
+                move_setting(row[0],20,row[4],half,23);move_setting(row[1],20,row[4]+26,half,row[1]==Quality?200:29);
+                move_setting(row[2],right,row[4],half,23);move_setting(row[3],right,row[4]+26,half,row[3]==Resources?200:29);
+            }
+            move_setting(AccelerationLabel,20,196,width-40,23);move_setting(Acceleration,20,222,width-40,140);
+            move_setting(PdfOcr,20,260,width-40,26);move_setting(OcrEnglish,20,292,160,26);
+            move_setting(OcrRussian,190,292,160,26);move_setting(OcrAzerbaijani,360,292,width-380,26);
+        } else if(settings_section == 2) {
+            move_setting(WheelLabel,20,10,width-40,24);move_setting(WheelHint,20,40,width-40,40);
+            move_setting(CategoryLabel,20,92,178,22);move_setting(CategoryChoice,20,118,178,220);
+            move_setting(Formats,218,92,width-372,158);move_setting(MoveUp,width-134,92,114,30);move_setting(MoveDown,width-134,130,114,30);
+            ListView_SetColumnWidth(setting(Formats),0,px(width-394));
+        } else {
+            move_setting(AutoUpdate,20,10,width-40,28);move_setting(UpdateLabel,20,60,width-40,23);move_setting(UpdateChannel,20,90,width-40,29);
         }
-        move_setting(AccelerationLabel, 20, 196, width - 40, 23);
-        move_setting(Acceleration, 20, 222, width - 40, 140);
-        move_setting(PdfOcr, 20, 260, width - 40, 26);
-        move_setting(OcrEnglish, 20, 292, 160, 26);
-        move_setting(OcrRussian, 190, 292, 160, 26);
-        move_setting(OcrAzerbaijani, 360, 292, width - 380, 26);
-        move_setting(OutputLabel, 20, 340, width - 40, 22);
-        move_setting(Output, 20, 366, width - 152, 29); move_setting(Browse, width - 122, 366, 102, 29);
-        move_setting(OutputHint, 20, 400, width - 40, 23);
-        move_setting(AutoShow, 20, 430, width - 40, 28);
-        move_setting(Startup, 20, 472, width - 40, 28);
-        move_setting(AutoUpdate, 20, 506, width - 40, 28);
-        move_setting(UpdateLabel, 20, 548, width - 40, 23);
-        move_setting(UpdateChannel, 20, 578, width - 40, 29);
-        move_setting(WheelLabel, 20, 646, width - 40, 24);
-        move_setting(WheelHint, 20, 676, width - 40, 40);
-        move_setting(CategoryLabel, 20, 728, 178, 22); move_setting(CategoryChoice, 20, 754, 178, 220);
-        move_setting(Formats, 218, 728, width - 372, 178);
-        move_setting(MoveUp, width - 134, 728, 114, 30); move_setting(MoveDown, width - 134, 766, 114, 30);
-        ListView_SetColumnWidth(setting(Formats), 0, px(width - 394));
     }
     void layout() {
         if (!window || !main_control(Tabs)) return;
@@ -287,11 +294,12 @@ struct ControlPanel::Impl {
         move(main_control(Open), 20, height - 50, 188, 32);
         move(main_control(Retry), 220, height - 50, 132, 32);
         move(main_control(Remove), 364, height - 50, 188, 32);
-        move(page, 0, 64, width, height - 164);
+        move(main_control(SettingsSection),20,68,width-40,180);
+        move(page, 0, 112, width, height - 212);
         RECT viewport{}; GetClientRect(page, &viewport);
         SCROLLINFO info{sizeof(info), SIF_RANGE | SIF_PAGE | SIF_POS};
-        info.nMin = 0; info.nMax = px(922) - 1; info.nPage = static_cast<UINT>(std::max(0L, viewport.bottom));
-        scroll = std::clamp(scroll, 0, std::max(0, px(922) - static_cast<int>(viewport.bottom))); info.nPos = scroll;
+        info.nMin = 0; info.nMax = px(section_height()) - 1; info.nPage = static_cast<UINT>(std::max(0L, viewport.bottom));
+        scroll = std::clamp(scroll, 0, std::max(0, px(section_height()) - static_cast<int>(viewport.bottom))); info.nPos = scroll;
         SetScrollInfo(page, SB_VERT, &info, TRUE);
         move(main_control(SettingsError), 20, height - 91, width - 40, 35);
         move(main_control(Defaults), 20, height - 47, 154, 32);
@@ -410,6 +418,7 @@ struct ControlPanel::Impl {
         Button_SetCheck(setting(OcrEnglish), draft.conversion.ocr_languages.find("eng") != std::string::npos ? BST_CHECKED : BST_UNCHECKED);
         Button_SetCheck(setting(OcrRussian), draft.conversion.ocr_languages.find("rus") != std::string::npos ? BST_CHECKED : BST_UNCHECKED);
         Button_SetCheck(setting(OcrAzerbaijani), draft.conversion.ocr_languages.find("aze") != std::string::npos ? BST_CHECKED : BST_UNCHECKED);
+        SendMessageW(setting(Notifications),CB_SETCURSEL,static_cast<WPARAM>(draft.notifications),0);
         Button_SetCheck(setting(Startup), draft.start_with_windows ? BST_CHECKED : BST_UNCHECKED);
         Button_SetCheck(setting(AutoUpdate), draft.automatic_updates ? BST_CHECKED : BST_UNCHECKED);
         set_text(setting(UpdateChannel), draft.update_channel);
@@ -422,6 +431,9 @@ struct ControlPanel::Impl {
     bool read_settings(Settings& result) {
         save_visible_formats();
         result = draft;
+        const auto notifications=SendMessageW(setting(Notifications),CB_GETCURSEL,0,0);
+        if(notifications<0 || notifications>2) {settings_error(L"Выберите режим уведомлений.");return false;}
+        result.notifications=static_cast<NotificationMode>(notifications);
         result.start_with_windows = Button_GetCheck(setting(Startup)) == BST_CHECKED;
         result.automatic_updates = Button_GetCheck(setting(AutoUpdate)) == BST_CHECKED;
         result.update_channel = text_of(setting(UpdateChannel));
@@ -515,6 +527,15 @@ struct ControlPanel::Impl {
         if (id == CategoryChoice && notification == CBN_SELCHANGE) {
             save_visible_formats(); category_index = static_cast<int>(SendMessageW(setting(CategoryChoice), CB_GETCURSEL, 0, 0));
             category_index = std::clamp(category_index, 0, static_cast<int>(categories.size()) - 1); fill_formats(); return;
+        }
+        if(id == SettingsSection && notification == CBN_SELCHANGE) {
+            settings_section=static_cast<int>(SendMessageW(main_control(SettingsSection),CB_GETCURSEL,0,0));
+            if(settings_section<0 || settings_section>3) settings_section=0;
+            scroll=0;layout();return;
+        }
+        if(id == ExportDiagnostics && actions.export_diagnostics) {
+            try {actions.export_diagnostics();}catch(const std::exception& e){settings_error((L"Не удалось сохранить диагностику. "+exception_reason(e)).c_str());}
+            return;
         }
         if (notification == EN_CHANGE || notification == CBN_SELCHANGE) { settings_error(L""); return; }
         if (notification != BN_CLICKED) return;

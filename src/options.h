@@ -14,11 +14,13 @@ struct ConversionOptions {
     std::string ocr_languages = "eng+rus+aze";
     VideoAcceleration video_acceleration = VideoAcceleration::Auto;
 };
+enum class NotificationMode { All, Errors, None };
 struct Settings {
     ConversionOptions conversion;
     std::filesystem::path output_directory;
     std::map<Category, std::vector<Format>> wheels;
-    bool auto_show_progress = true;
+    bool auto_show_progress = false;
+    NotificationMode notifications = NotificationMode::All;
     bool start_with_windows = false, automatic_updates = true;
     std::wstring update_channel = L"https://raw.githubusercontent.com/Rzaev125/Supertool/main/updates/stable.txt";
 };

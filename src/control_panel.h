@@ -20,7 +20,7 @@ struct PanelState {
     std::vector<PanelRow> jobs;
 };
 struct PanelActions {
-    std::function<void()> cancel, pause_queue, clear_queue;
+    std::function<void()> cancel, pause_queue, clear_queue, export_diagnostics;
     std::function<void(uint64_t)> open_result, retry, remove;
     std::function<void(const Settings&)> save;
 };

@@ -1,4 +1,5 @@
 #include "converter.h"
+#include "diagnostics.h"
 #include "media_converter.h"
 #include "engines.h"
 #include "image_converter.h"
@@ -98,9 +99,10 @@ void convert_file(const fs::path& input_path, const fs::path& output_path, const
     require_conversion_engines(input, format);
     WinHandle source(CreateFileW(input.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
     BY_HANDLE_FILE_INFORMATION info{};
-    if (source.value == INVALID_HANDLE_VALUE || !GetFileInformationByHandle(source.value, &info) || (info.dwFileAttributes & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY)))
+    if (source.value == INVALID_HANDLE_VALUE) throw std::runtime_error(file_error(GetLastError(),"Не удалось открыть исходный файл."));
+    if (!GetFileInformationByHandle(source.value, &info) || (info.dwFileAttributes & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY)))
         throw std::runtime_error("Исходный файл недоступен или занят для записи.");
-    if (!CreateDirectoryW(work.c_str(), nullptr)) throw std::runtime_error("Временная папка уже существует или недоступна.");
+    if (!CreateDirectoryW(work.c_str(), nullptr)) throw std::runtime_error(file_error(GetLastError(),"Не удалось создать временную папку."));
     struct Cleanup { fs::path path; ~Cleanup() { remove_owned_tree(path); } } cleanup{work};
     auto result = work / (L"result" + std::wstring(extension(format)));
     switch (category(input)) {
@@ -121,6 +123,6 @@ void convert_file(const fs::path& input_path, const fs::path& output_path, const
     } else if (!fs::is_regular_file(result) || (format != Format::Txt && fs::file_size(result) == 0)) throw std::runtime_error("Конвертер не создал готовый файл.");
     validate_local_path(output, false);
     report_progress(99, L"Сохранение результата");
-    if (!MoveFileExW(result.c_str(), output.c_str(), MOVEFILE_WRITE_THROUGH)) throw std::runtime_error("Не удалось сохранить результат. Возможно, файл с таким именем уже появился.");
+    if (!MoveFileExW(result.c_str(), output.c_str(), MOVEFILE_WRITE_THROUGH)) throw std::runtime_error(file_error(GetLastError(),"Не удалось сохранить результат."));
 }
 }

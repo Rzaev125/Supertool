@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1') -Force
 $root = Split-Path $PSScriptRoot -Parent
 $executable = Join-Path $root "build\$Configuration\ShiftWheel.exe"
-$version = '0.6.0'
+$version = '0.7.0'
 if ((Get-Item -LiteralPath $executable).VersionInfo.ProductVersion -ne $version) { throw 'Build the matching application version before packaging.' }
 $modules = Join-Path $root 'tools\modules'
 foreach ($file in @('ffmpeg\ffmpeg.exe','ffmpeg\ffprobe.exe','libreoffice\program\soffice.com','pdfium\pdfium.dll','avif\avifenc.exe','avif\avifdec.exe','avif\vcruntime140.dll','heic\libheif.dll','heic\heif-enc.exe','heic\heif-dec.exe','ocr\tesseract.exe','ocr\tessdata\eng.traineddata','ocr\tessdata\rus.traineddata','ocr\tessdata\aze.traineddata','ocr\tessdata\aze_cyrl.traineddata')) {
@@ -32,6 +32,6 @@ if ($StageOnly) { Get-Item -LiteralPath (Join-Path $destination 'ShiftWheel.exe'
 $archive = Join-Path $root "out\ShiftWheel-$version-win-x64.zip"
 # tar uses ZIP64 where required and includes the directory as a portable bundle.
 # Keep the user's portable settings in place, but never distribute them.
-& tar.exe -a -cf $archive --exclude 'ShiftWheel/ShiftWheel.ini' --exclude 'ShiftWheel/ShiftWheel.ini.tmp-*' -C (Join-Path $root 'out') ShiftWheel
+& tar.exe -a -cf $archive --exclude 'ShiftWheel/ShiftWheel.ini' --exclude 'ShiftWheel/ShiftWheel.ini.tmp-*' --exclude 'ShiftWheel/ShiftWheel.diagnostics.log' -C (Join-Path $root 'out') ShiftWheel
 if ($LASTEXITCODE -ne 0) { throw 'Archive creation failed.' }
 Get-Item -LiteralPath (Join-Path $destination 'ShiftWheel.exe'),$archive | Select-Object FullName,Length
