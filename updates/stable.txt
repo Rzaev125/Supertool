@@ -1,0 +1,4 @@
+version=0.6.0
+url=https://github.com/Rzaev125/Supertool/releases/download/v0.6.0/ShiftWheel-0.6.0-win-x64-setup.exe
+size=556011128
+sha256=a6085552f75d432e6073d1681cfe89163cfd358b3d5e7e698312198c666a7abb
