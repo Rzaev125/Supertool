@@ -310,12 +310,12 @@ def formats_tests():
     multipage = root / 'multipage.tiff'; image.save(multipage,save_all=True,append_images=[image])
     convert(multipage, 'png', fail=True)
     for kind in ['webp','tiff']:
-        rotated = root / f'rotated.{kind}'
+        rotated = root / f'rotated-{kind}.{kind}'
         if kind == 'webp':
             exif = Image.Exif(); exif[274] = 6; image.save(rotated,exif=exif)
         else:
             tags = TiffImagePlugin.ImageFileDirectory_v2(); tags[274] = 6; image.save(rotated,tiffinfo=tags)
-        convert(rotated, 'png', fail=True)
+        assert Image.open(convert(rotated, 'png')).size == (image.height, image.width), 'EXIF rotation lost'
         bad = root / f'bad.{kind}'; bad.write_bytes(b'not an image'); convert(bad,'png',fail=True)
         wrong = root / f'disguised.{kind}'; wrong.write_bytes(source.read_bytes()); convert(wrong,'png',fail=True)
     webp = root / 'Прозрачные цвета-result.webp'

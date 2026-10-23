@@ -21,7 +21,7 @@ void dimensions(uint32_t width, uint32_t height) {
     if (!width || !height || width > 32768 || height > 32768 || uint64_t(width) * height > 40000000)
         throw std::runtime_error("Лимит изображения: 40 млн пикселей и 32768 пикселей по каждой стороне.");
 }
-void check_exif(std::vector<unsigned char> data) {
+unsigned check_exif(std::vector<unsigned char> data) {
     // WebP EXIF may contain either the TIFF header or an Exif\0\0 prefix.
     if (data.size() >= 6 && !memcmp(data.data(), "Exif\0\0", 6)) data.erase(data.begin(), data.begin() + 6);
     if (data.size() < 8) invalid();
@@ -38,16 +38,20 @@ void check_exif(std::vector<unsigned char> data) {
     if (offset < 8) invalid();
     const auto count = number(offset, 2);
     if (count > 4096 || offset + 2 + uint64_t(count) * 12 + 4 > data.size()) invalid();
+    unsigned orientation = 1; bool found = false;
     for (uint32_t i = 0; i < count; ++i) {
         size_t entry = offset + 2 + size_t(i) * 12;
         if (number(entry, 2) == 274) {
             if (number(entry + 2, 2) != 3 || number(entry + 4, 4) != 1) invalid();
-            if (number(entry + 8, 2) != 1)
-                throw std::runtime_error("Сначала примените поворот EXIF WebP в редакторе.");
+            if (found) invalid();
+            orientation = number(entry + 8, 2); found = true;
+            if (orientation < 1 || orientation > 8) invalid();
         }
     }
+    return orientation;
 }
-bool validate_webp(const fs::path& input) {
+struct WebpInfo { bool profile = false; unsigned orientation = 1; };
+WebpInfo validate_webp(const fs::path& input) {
     const uint64_t size = fs::file_size(input);
     if (size < 20 || size > 1024ULL * 1024 * 1024) invalid();
     std::ifstream file(input, std::ios::binary);
@@ -59,7 +63,8 @@ bool validate_webp(const fs::path& input) {
     std::array<unsigned char, 12> riff{}; read(0, riff.data(), riff.size());
     if (memcmp(riff.data(), "RIFF", 4) || memcmp(riff.data() + 8, "WEBP", 4) || uint64_t(le(riff.data() + 4, 4)) + 8 != size) invalid();
     unsigned frames = 0, chunks = 0;
-    bool extended = false, profile = false, profile_flag = false;
+    bool extended = false, profile = false, profile_flag = false, exif = false, exif_flag = false;
+    unsigned orientation = 1;
     uint32_t canvas_width = 0, canvas_height = 0, width = 0, height = 0;
     for (uint64_t offset = 12; offset < size;) {
         if (size - offset < 8 || ++chunks > 65536) invalid();
@@ -75,7 +80,7 @@ bool validate_webp(const fs::path& input) {
             if (data[0] & 2) throw std::runtime_error("Анимированные WebP пока не поддерживаются.");
             if ((data[0] & 0xc1) || data[1] || data[2] || data[3]) invalid();
             canvas_width = le(data.data() + 4, 3) + 1; canvas_height = le(data.data() + 7, 3) + 1;
-            dimensions(canvas_width, canvas_height); extended = true; profile_flag = (data[0] & 0x20) != 0;
+            dimensions(canvas_width, canvas_height); extended = true; profile_flag = (data[0] & 0x20) != 0; exif_flag = (data[0] & 0x08) != 0;
         } else if (is("VP8 ") || is("VP8L")) {
             const bool lossless = is("VP8L");
             const size_t needed = lossless ? 5 : 10;
@@ -93,13 +98,14 @@ bool validate_webp(const fs::path& input) {
             if (profile || !length || length > 4 * 1024 * 1024) invalid();
             profile = true;
         } else if (is("EXIF")) {
-            if (length > 4 * 1024 * 1024) invalid();
-            std::vector<unsigned char> data(length); read(offset + 8, data.data(), data.size()); check_exif(std::move(data));
+            if (exif || length > 4 * 1024 * 1024) invalid();
+            exif = true;
+            std::vector<unsigned char> data(length); read(offset + 8, data.data(), data.size()); orientation = check_exif(std::move(data));
         }
         offset = end;
     }
-    if (frames != 1 || profile != profile_flag || (extended && (width != canvas_width || height != canvas_height))) invalid();
-    return profile;
+    if (frames != 1 || profile != profile_flag || exif != exif_flag || (extended && (width != canvas_width || height != canvas_height))) invalid();
+    return {profile, orientation};
 }
 void image_engine(const fs::path& input, const fs::path& output, bool encode, const fs::path& log, const ConversionOptions& options) {
     const auto threads = std::to_wstring(resource_threads(options.resources));
@@ -121,10 +127,13 @@ void image_engine(const fs::path& input, const fs::path& output, bool encode, co
 void convert_webp(const fs::path& input, const fs::path& output, Format format, const fs::path& work, const ConversionOptions& options) {
     validate_options(options);
     fs::path pixels = input;
+    unsigned orientation = 0;
     ImageColor color = ImageColor::ToSrgb;
     const auto source_format = parse_format(input.extension().wstring());
     if (source_format == Format::Webp) {
-        if (validate_webp(input)) color = ImageColor::RequireProfile;
+        const auto info = validate_webp(input);
+        if (info.profile) color = ImageColor::RequireProfile;
+        orientation = info.orientation;
         pixels = work / L"webp-decoded.png";
         image_engine(input, pixels, false, work / L"webp-decode.log", options);
     } else if (source_format == Format::Avif) {
@@ -133,9 +142,9 @@ void convert_webp(const fs::path& input, const fs::path& output, Format format, 
     }
     if (format == Format::Webp || format == Format::Avif) {
         const auto normalized = work / L"webp-normalized.png";
-        convert_image(pixels, normalized, work / L"webp-normalize.tmp", color, options);
+        convert_image(pixels, normalized, work / L"webp-normalize.tmp", color, options, orientation);
         if (format == Format::Avif) convert_avif(normalized, output, format, work, options);
         else image_engine(normalized, output, true, work / L"webp-encode.log", options);
-    } else convert_image(pixels, output, work / L"webp-image.tmp", color, options);
+    } else convert_image(pixels, output, work / L"webp-image.tmp", color, options, orientation);
 }
 }

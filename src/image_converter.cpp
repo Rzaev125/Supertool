@@ -85,7 +85,7 @@ private:
 fs::path normalized(const fs::path& value) { return fs::absolute(value).lexically_normal(); }
 bool same_path(const fs::path& a, const fs::path& b) { return _wcsicmp(a.c_str(), b.c_str()) == 0; }
 }
-void convert_image(const fs::path& input_arg, const fs::path& output_arg, const fs::path& temporary_arg, ImageColor color, const ConversionOptions& options) {
+void convert_image(const fs::path& input_arg, const fs::path& output_arg, const fs::path& temporary_arg, ImageColor color, const ConversionOptions& options, unsigned orientation_override) {
     validate_options(options);
     const auto input = normalized(input_arg), output = normalized(output_arg), temporary = normalized(temporary_arg);
     if (same_path(input, output) || same_path(input, temporary) || same_path(output, temporary))
@@ -127,14 +127,22 @@ void convert_image(const fs::path& input_arg, const fs::path& output_arg, const 
             UINT width = 0, height = 0; require_hr(decoded->GetSize(&width, &height), "Не удалось определить размер");
             if (!width || !height || width > 32768 || height > 32768 || static_cast<ULONGLONG>(width) * height > 40000000)
                 throw std::runtime_error("Лимит прототипа: 40 млн пикселей и 32768 пикселей по каждой стороне.");
+            unsigned orientation = orientation_override ? orientation_override : 1;
+            if (orientation > 8) throw std::runtime_error("Повреждена ориентация EXIF.");
             ComPtr<IWICMetadataQueryReader> metadata;
-            if (SUCCEEDED(decoded->GetMetadataQueryReader(&metadata))) {
+            if (!orientation_override && SUCCEEDED(decoded->GetMetadataQueryReader(&metadata))) {
+                bool found = false;
                 for (auto query : {L"/app1/ifd/{ushort=274}", L"/ifd/{ushort=274}"}) {
-                    PROPVARIANT orientation{};
-                    const HRESULT status = metadata->GetMetadataByName(query, &orientation);
-                    const bool rotated = SUCCEEDED(status) && (orientation.vt != VT_UI2 || orientation.uiVal != 1);
-                    PropVariantClear(&orientation);
-                    if (rotated) throw std::runtime_error("Сначала примените поворот EXIF в редакторе: прототип пока не переносит ориентацию.");
+                    PROPVARIANT value{};
+                    const HRESULT status = metadata->GetMetadataByName(query, &value);
+                    const bool valid = value.vt == VT_UI2 && value.uiVal >= 1 && value.uiVal <= 8;
+                    const unsigned candidate = value.uiVal;
+                    PropVariantClear(&value);
+                    if (SUCCEEDED(status)) {
+                        if (found || !valid) throw std::runtime_error("Повреждена или неоднозначна ориентация EXIF.");
+                        orientation = candidate; found = true;
+                    } else if (status != WINCODEC_ERR_PROPERTYNOTFOUND && status != WINCODEC_ERR_PROPERTYNOTSUPPORTED)
+                        require_hr(status, "Не удалось прочитать ориентацию EXIF");
                 }
             }
             ComPtr<IWICBitmapSource> color_source = decoded;
@@ -171,6 +179,22 @@ void convert_image(const fs::path& input_arg, const fs::path& output_arg, const 
                     require_hr(transform->Initialize(decoded.Get(), source_context.Get(), srgb.Get(), GUID_WICPixelFormat32bppBGRA), "Не удалось преобразовать цвет в sRGB");
                     color_source = transform;
                 }
+            }
+            if (orientation != 1) {
+                // WIC flips the source axes before rotating. EXIF 5/7 are
+                // transpose/transverse, not simple quarter-turns.
+                constexpr WICBitmapTransformOptions transforms[]{WICBitmapTransformRotate0,
+                    WICBitmapTransformRotate0, WICBitmapTransformFlipHorizontal, WICBitmapTransformRotate180,
+                    WICBitmapTransformFlipVertical,
+                    static_cast<WICBitmapTransformOptions>(WICBitmapTransformRotate270 | WICBitmapTransformFlipHorizontal),
+                    WICBitmapTransformRotate90,
+                    static_cast<WICBitmapTransformOptions>(WICBitmapTransformRotate90 | WICBitmapTransformFlipHorizontal),
+                    WICBitmapTransformRotate270};
+                ComPtr<IWICBitmapFlipRotator> rotated;
+                require_hr(factory->CreateBitmapFlipRotator(&rotated), "Не удалось создать поворот изображения");
+                require_hr(rotated->Initialize(color_source.Get(), transforms[orientation]), "Не удалось применить ориентацию EXIF");
+                color_source = rotated;
+                require_hr(color_source->GetSize(&width, &height), "Не удалось определить размер после поворота");
             }
             if (options.image_max_dimension && std::max(width, height) > options.image_max_dimension) {
                 const double scale = static_cast<double>(options.image_max_dimension) / std::max(width, height);
@@ -211,6 +235,7 @@ void convert_image(const fs::path& input_arg, const fs::path& output_arg, const 
             double dpi_x = 96, dpi_y = 96;
             decoded->GetResolution(&dpi_x, &dpi_y);
             if (!std::isfinite(dpi_x) || !std::isfinite(dpi_y) || dpi_x <= 0 || dpi_y <= 0 || dpi_x > 10000 || dpi_y > 10000) dpi_x = dpi_y = 96;
+            if (orientation >= 5) std::swap(dpi_x, dpi_y);
             require_hr(frame->SetResolution(dpi_x, dpi_y), "Не удалось задать разрешение");
             auto format = keep_alpha ? GUID_WICPixelFormat32bppBGRA : GUID_WICPixelFormat24bppBGR;
             const auto requested = format;
