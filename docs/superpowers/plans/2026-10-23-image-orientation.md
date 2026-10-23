@@ -55,5 +55,9 @@
 
 - [ ] Run full CTest suite sequentially from D with workspace-local TEMP/TMP. Expected: all pass, no source C paths in active CMake cache.
 - [ ] Record exact coverage, metadata scope, unsupported HEIC/AVIF EXIF/container cases, and manual Explorer/VM limitations. Keep metadata roadmap partial where full transfer is unimplemented.
-- [ ] Commit; obtain one fresh whole-branch review, fix Important/Critical once with RED/GREEN + full suite, defer minors explicitly.
+- [ ] Commit and prepare the whole-branch review package. Final review is the workflow gate after task completion.
 - [ ] Finish with exact deletion status and local build/test result. No claim that old C was deleted if its atomic rename remains blocked.
+
+## Final gate
+
+After Task 3: one fresh whole-branch review, one RED/GREEN fix pass for Important/Critical plus full suite; defer minors explicitly.
