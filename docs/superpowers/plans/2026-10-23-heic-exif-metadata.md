@@ -29,7 +29,7 @@
 ### Task1: HEIC orientation and bounded semantic parser
 
 - [x] Baseline focused tests, design builder check completed.
-- [x] Add real HEIC fixtures with attached EXIF after encoding: all8, primary transforms/identity/crop combinations, both byte orders, malformed/duplicate/multiple EXIF; observe current refusal RED.
+- [x] Add real HEIC fixtures with attached EXIF after encoding: all8, primary transforms/identity/crop combinations, both byte orders, malformed/duplicate orientation (multiple-block/4MiB guards retained, not newly stress-tested); observe current refusal RED.
 - [x] Extend image_exif semantic file/span parser and HEIC validation property detection, pass orientation override across SDR/HDR and bridges; unit boundary cases RED/GREEN.
 - [x] Profile tests green; commit and ledger.
 

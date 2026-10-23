@@ -202,8 +202,8 @@ struct ControlPanel::Impl {
         label_control(AudioLabel, L"Битрейт аудио, кбит/с (0 — авто)"); number(AudioBitrate);
         label_control(PdfLabel, L"PDF в изображение, DPI"); number(PdfDpi);
         label_control(AccelerationLabel, L"Ускорение кодирования"); combo(Acceleration);
-        label_control(ImageMetadataLabel, L"Метаданные фото (без GPS)"); combo(ImageMetadataChoice);
-        for (const auto value : {L"Удалять EXIF/XMP", L"Сохранять только дату съёмки", L"Дата, автор и copyright"}) SendMessageW(setting(ImageMetadataChoice), CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
+        label_control(ImageMetadataLabel, L"JPEG/TIFF, без GPS; остальные — без метаданных"); combo(ImageMetadataChoice);
+        for (const auto value : {L"Удалять EXIF/XMP", L"Только дата: JPEG/TIFF → JPEG/TIFF", L"Дата, автор, copyright: JPEG/TIFF/HEIC → JPEG/TIFF"}) SendMessageW(setting(ImageMetadataChoice), CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
         label_control(CodecLabel, L"Видеокодек"); combo(Codec);
         for (const auto value : {L"По формату: H.264 / VP9", L"H.264 — MP4 / MKV / MOV", L"HEVC — MP4 / MKV / MOV", L"AV1 — MP4 / MKV / WebM"}) SendMessageW(setting(Codec), CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
         for (const auto value : {L"Автоматически (GPU / CPU)", L"Только процессор (CPU)"}) SendMessageW(setting(Acceleration), CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));

@@ -12,7 +12,7 @@ enum : int { Tabs = 100, Headline, Summary, Progress, ProgressText, Jobs, JobDet
     Cancel, Pause, Clear, Open, Retry, Remove,
     Quality = 200, Resources, ImageSize, VideoSize, AudioBitrate, PdfDpi,
     Output, Browse, AutoShow, CategoryChoice, Formats, MoveUp, MoveDown,
-    Apply, Defaults, SettingsError, PdfOcr, OcrEnglish, OcrRussian, OcrAzerbaijani, Acceleration, Startup, AutoUpdate, UpdateChannel, UpdateLabel, Codec=320, ImageMetadataChoice=322 };
+    Apply, Defaults, SettingsError, PdfOcr, OcrEnglish, OcrRussian, OcrAzerbaijani, Acceleration, Startup, AutoUpdate, UpdateChannel, UpdateLabel, Codec=320, ImageMetadataChoice=322, ImageMetadataLabel=323 };
 void check(bool value, const char* message) { if (!value) throw std::runtime_error(message); }
 HWND child(HWND parent, int id) {
     struct Search { int id; HWND result = nullptr; } search{id};
@@ -247,6 +247,16 @@ int main(int argc,char** argv) {
         SendMessageW(child(window, Acceleration), CB_SETCURSEL, static_cast<WPARAM>(-1), 0);
         click(child(window, Apply)); check(saved == before + 1, "empty acceleration choice rejected");
         panel.set_settings(Settings{});
+    });
+    run("metadata scope is visible for both preservation modes", [&] {
+        const auto label=control_text(child(window,ImageMetadataLabel));
+        check(label.find(L"JPEG/TIFF")!=std::wstring::npos && label.find(L"остальн")!=std::wstring::npos,"output scope and stripping fallback hidden");
+        const auto combo=child(window,ImageMetadataChoice);
+        wchar_t text[160]{};
+        SendMessageW(combo,CB_GETLBTEXT,1,reinterpret_cast<LPARAM>(text));
+        check(std::wstring(text).find(L"JPEG/TIFF → JPEG/TIFF")!=std::wstring::npos,"legacy source/target scope hidden");
+        SendMessageW(combo,CB_GETLBTEXT,2,reinterpret_cast<LPARAM>(text));
+        check(std::wstring(text).find(L"JPEG/TIFF/HEIC → JPEG/TIFF")!=std::wstring::npos,"photo source/target scope hidden");
     });
     run("capture-date combo saves, restores and rejects invalid selection", [&] {
         panel.set_settings(Settings{});
