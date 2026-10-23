@@ -4,6 +4,8 @@
 #include <ole2.h>
 #include <iostream>
 #include <stdexcept>
+#include <filesystem>
+#include <fstream>
 
 using namespace shiftwheel;
 namespace {
@@ -32,6 +34,21 @@ void click(HWND window) { SendMessageW(window, BM_CLICK, 0, 0); }
 void select(HWND list, int index) {
     ListView_SetItemState(list, -1, 0, LVIS_SELECTED | LVIS_FOCUSED);
     ListView_SetItemState(list, index, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+}
+void render(HWND window,const std::filesystem::path& path) {
+    RECT rect{};GetClientRect(window,&rect);
+    BITMAPINFO info{};info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);info.bmiHeader.biWidth=rect.right;
+    info.bmiHeader.biHeight=-rect.bottom;info.bmiHeader.biPlanes=1;info.bmiHeader.biBitCount=32;info.bmiHeader.biCompression=BI_RGB;
+    const auto dc=CreateCompatibleDC(nullptr);void* pixels=nullptr;
+    const auto bitmap=CreateDIBSection(dc,&info,DIB_RGB_COLORS,&pixels,nullptr,0);check(bitmap&&pixels,"render bitmap");
+    const auto previous=SelectObject(dc,bitmap);
+    SendMessageW(window,WM_PRINT,reinterpret_cast<WPARAM>(dc),PRF_CLIENT|PRF_CHILDREN|PRF_ERASEBKGND);
+    GdiFlush();
+    const DWORD bytes=static_cast<DWORD>(rect.right*rect.bottom*4);
+    BITMAPFILEHEADER file{};file.bfType=0x4d42;file.bfOffBits=sizeof(file)+sizeof(BITMAPINFOHEADER);file.bfSize=file.bfOffBits+bytes;
+    std::ofstream output(path,std::ios::binary);output.write(reinterpret_cast<const char*>(&file),sizeof(file));
+    output.write(reinterpret_cast<const char*>(&info.bmiHeader),sizeof(info.bmiHeader));output.write(static_cast<const char*>(pixels),bytes);
+    check(static_cast<bool>(output),"render saved");SelectObject(dc,previous);DeleteObject(bitmap);DeleteDC(dc);
 }
 }
 int main(int argc,char** argv) {
@@ -77,6 +94,21 @@ int main(int argc,char** argv) {
     check(host != nullptr, "hidden host created");
     SetWindowLongPtrW(window, GWL_STYLE, (GetWindowLongPtrW(window, GWL_STYLE) & ~WS_POPUP) | WS_CHILD);
     SetParent(window, host);
+    if(argc>=3 && std::string(argv[1])=="--render-settings") {
+        SetWindowLongPtrW(window,GWL_STYLE,(GetWindowLongPtrW(window,GWL_STYLE)&~WS_OVERLAPPEDWINDOW)|WS_CHILD);
+        SetWindowPos(window,nullptr,0,0,0,0,SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE|SWP_FRAMECHANGED);
+        panel.show(true,false);
+        const int dpi=argc>=5?std::stoi(argv[4]):96;
+        const int width=argc>=6?std::stoi(argv[5]):1040;
+        RECT proposed{0,0,MulDiv(width,dpi,96),MulDiv(790,dpi,96)};
+        SendMessageW(window,WM_DPICHANGED,MAKELONG(dpi,dpi),reinterpret_cast<LPARAM>(&proposed));
+        const int section=argc>=4?std::stoi(argv[3]):0;
+        HWND rail=child(window,227);SendMessageW(rail,LB_SETCURSEL,section,0);
+        SendMessageW(window,WM_COMMAND,MAKEWPARAM(227,LBN_SELCHANGE),reinterpret_cast<LPARAM>(rail));
+        if(argc>=7 && std::string(argv[6])=="bottom")SendMessageW(GetParent(child(window,Output)),WM_VSCROLL,SB_BOTTOM,0);
+        render(window,std::filesystem::path(argv[2]));
+        panel.shutdown();DestroyWindow(host);OleUninitialize();return 0;
+    }
     auto run = [&](const char* name, auto test) {
         try { test(); std::cout << "PASS " << name << '\n'; }
         catch (const std::exception& error) { ++failed; std::cerr << "FAIL " << name << ": " << error.what() << '\n'; }
@@ -85,6 +117,40 @@ int main(int argc,char** argv) {
         panel.update({});
         for (int id : {Cancel, Pause, Clear, Open, Retry, Remove}) check(!IsWindowEnabled(child(window, id)), "empty action disabled");
         check(ListView_GetItemCount(child(window, Jobs)) == 0, "empty session list");
+    });
+    run("settings rail and fixed save footer do not overlap content", [&] {
+        panel.show(true, false);
+        const HWND nav = child(window, 227);
+        wchar_t type[32]{}; GetClassNameW(nav, type, 32);
+        check(lstrcmpiW(type,L"LISTBOX")==0, "sections must be persistently visible navigation");
+        RECT rail{}, page{}, footer{}, client{};
+        GetWindowRect(nav, &rail); GetWindowRect(GetParent(child(window, Output)), &page);
+        MapWindowPoints(nullptr, window, reinterpret_cast<POINT*>(&rail), 2);
+        MapWindowPoints(nullptr, window, reinterpret_cast<POINT*>(&page), 2);
+        GetWindowRect(child(window, Apply), &footer); GetClientRect(window, &client);
+        MapWindowPoints(nullptr, window, reinterpret_cast<POINT*>(&footer), 2);
+        check(rail.right <= page.left, "section rail overlaps form");
+        check(footer.bottom <= client.bottom && footer.top > 0, "save action outside window");
+        check(page.bottom <= footer.top, "scroll page overlaps fixed footer");
+        SetWindowTextW(child(window, Output), L"draft remains here");
+        SendMessageW(nav, LB_SETCURSEL, 1, 0);
+        SendMessageW(window, WM_COMMAND, MAKEWPARAM(227, LBN_SELCHANGE), reinterpret_cast<LPARAM>(nav));
+        SendMessageW(nav, LB_SETCURSEL, 0, 0);
+        SendMessageW(window, WM_COMMAND, MAKEWPARAM(227, LBN_SELCHANGE), reinterpret_cast<LPARAM>(nav));
+        check(control_text(child(window, Output)) == L"draft remains here", "navigation discarded unsaved edits");
+        panel.set_settings(Settings{});
+    });
+    run("minimum window height keeps task details above action buttons", [&] {
+        panel.show(false,false);
+        RECT minimum{0,0,740,540};SendMessageW(window,WM_DPICHANGED,MAKELONG(96,96),reinterpret_cast<LPARAM>(&minimum));
+        RECT jobs{},detail{},actions{},client{};
+        GetWindowRect(child(window,Jobs),&jobs);GetWindowRect(child(window,JobDetail),&detail);GetWindowRect(child(window,Open),&actions);
+        GetClientRect(window,&client);MapWindowPoints(nullptr,window,reinterpret_cast<POINT*>(&actions),2);
+        MapWindowPoints(nullptr,window,reinterpret_cast<POINT*>(&jobs),2);MapWindowPoints(nullptr,window,reinterpret_cast<POINT*>(&detail),2);
+        check(jobs.bottom<=detail.top,"task list overlaps details");
+        check(detail.bottom<=actions.top,"task details overlap action buttons at minimum height");
+        check(actions.bottom<=client.bottom,"task action buttons outside minimum window");
+        RECT normal{0,0,1040,790};SendMessageW(window,WM_DPICHANGED,MAKELONG(96,96),reinterpret_cast<LPARAM>(&normal));
     });
     PanelState state;
     state.headline = L"Преобразование"; state.detail = L"Обработка изображения";
@@ -131,7 +197,7 @@ int main(int argc,char** argv) {
         check(cancelled == 1, "close never cancels work");
     });
     run("update state and install/later actions are explicit",[&]{
-        panel.show(true,false);SendMessageW(child(window,227),CB_SETCURSEL,3,0);SendMessageW(window,WM_COMMAND,MAKEWPARAM(227,CBN_SELCHANGE),reinterpret_cast<LPARAM>(child(window,227)));
+        panel.show(true,false);SendMessageW(child(window,227),LB_SETCURSEL,3,0);SendMessageW(window,WM_COMMAND,MAKEWPARAM(227,LBN_SELCHANGE),reinterpret_cast<LPARAM>(child(window,227)));
         state.update_detail=L"Версия 0.8.0 — загружена";state.update_ready=true;state.update_available=true;panel.update(state);
         check(control_text(child(window,130))==state.update_detail,"update state missing");
         click(child(window,131));click(child(window,132));click(child(window,133));
@@ -191,8 +257,8 @@ int main(int argc,char** argv) {
     });
     run("format visibility and order persist and cannot become empty", [&] {
         panel.set_settings(Settings{});
-        auto section=child(window,227);SendMessageW(section,CB_SETCURSEL,2,0);
-        SendMessageW(window,WM_COMMAND,MAKEWPARAM(227,CBN_SELCHANGE),reinterpret_cast<LPARAM>(section));
+        auto section=child(window,227);SendMessageW(section,LB_SETCURSEL,2,0);
+        SendMessageW(window,WM_COMMAND,MAKEWPARAM(227,LBN_SELCHANGE),reinterpret_cast<LPARAM>(section));
         HWND formats = child(window, Formats);
         check(ListView_GetItemCount(formats) == 8, "all image formats including GIF displayed");
         select(formats, 0); click(child(window, MoveDown));
@@ -279,7 +345,7 @@ int main(int argc,char** argv) {
         RECT proposed{0, 0, 1110, 810};
         SendMessageW(window, WM_DPICHANGED, MAKELONG(144, 144), reinterpret_cast<LPARAM>(&proposed));
         HWND section=child(window,227);
-        SendMessageW(section,CB_SETCURSEL,2,0);SendMessageW(window,WM_COMMAND,MAKEWPARAM(227,CBN_SELCHANGE),reinterpret_cast<LPARAM>(section));
+        SendMessageW(section,LB_SETCURSEL,2,0);SendMessageW(window,WM_COMMAND,MAKEWPARAM(227,LBN_SELCHANGE),reinterpret_cast<LPARAM>(section));
         HWND formats = child(window, Formats);
         HWND page = GetParent(formats);
         SCROLLINFO info{sizeof(info), SIF_ALL};
@@ -289,16 +355,34 @@ int main(int argc,char** argv) {
         RECT item{}, viewport{}; GetWindowRect(formats, &item); GetClientRect(page, &viewport);
         MapWindowPoints(nullptr, page, reinterpret_cast<POINT*>(&item), 2);
         check(item.top >= 0 && item.bottom <= viewport.bottom, "focused format list fits viewport");
-        SendMessageW(section,CB_SETCURSEL,1,0);SendMessageW(window,WM_COMMAND,MAKEWPARAM(227,CBN_SELCHANGE),reinterpret_cast<LPARAM>(section));
+        SendMessageW(section,LB_SETCURSEL,1,0);SendMessageW(window,WM_COMMAND,MAKEWPARAM(227,LBN_SELCHANGE),reinterpret_cast<LPARAM>(section));
         auto metadata=child(window,ImageMetadataChoice);SendMessageW(metadata,WM_SETFOCUS,0,0);
         GetWindowRect(metadata,&item);MapWindowPoints(nullptr,page,reinterpret_cast<POINT*>(&item),2);
         check(item.top>=0&&item.bottom<=viewport.bottom,"focused metadata combo fits scrolled viewport at 144 DPI");
         SendMessageW(child(window, Quality), WM_SETFOCUS, 0, 0);
-        GetScrollInfo(page, SB_VERT, &info); check(info.nPos < 80, "keyboard returns to top fields");
+        GetWindowRect(child(window,Quality),&item);MapWindowPoints(nullptr,page,reinterpret_cast<POINT*>(&item),2);
+        check(item.top>=0&&item.bottom<=viewport.bottom,"keyboard returns to a fully visible first field");
         HFONT font = reinterpret_cast<HFONT>(SendMessageW(child(window, Apply), WM_GETFONT, 0, 0));
         LOGFONTW description{}; check(GetObjectW(font, sizeof(description), &description) != 0, "DPI font exists");
-        check(description.lfHeight == -20, "Segoe UI text scales with DPI");
+        check(description.lfHeight == -22, "Segoe UI text scales with DPI");
         check(!IsWindowVisible(window), "DPI testing remains headless");
+    });
+    run("dark page scrollbar accepts pointer input and clamps positions", [&] {
+        HWND nav=child(window,227);SendMessageW(nav,LB_SETCURSEL,1,0);
+        SendMessageW(window,WM_COMMAND,MAKEWPARAM(227,LBN_SELCHANGE),reinterpret_cast<LPARAM>(nav));
+        HWND page=GetParent(child(window,Output));RECT viewport{};GetClientRect(page,&viewport);
+        SendMessageW(page,WM_VSCROLL,SB_TOP,0);
+        SendMessageW(page,WM_LBUTTONDOWN,MK_LBUTTON,MAKELPARAM(viewport.right-2,viewport.bottom-2));
+        SendMessageW(page,WM_LBUTTONUP,0,MAKELPARAM(viewport.right-2,viewport.bottom-2));
+        SCROLLINFO info{sizeof(info),SIF_ALL};GetScrollInfo(page,SB_VERT,&info);
+        check(info.nPos>0&&info.nPos<=info.nMax-static_cast<int>(info.nPage)+1,"pointer scrollbar failed to move within range");
+        SendMessageW(page,WM_LBUTTONDOWN,MK_LBUTTON,MAKELPARAM(viewport.right-2,1));
+        SendMessageW(page,WM_MOUSEMOVE,MK_LBUTTON,MAKELPARAM(viewport.right-2,-100));
+        SendMessageW(page,WM_LBUTTONUP,0,MAKELPARAM(viewport.right-2,-100));
+        GetScrollInfo(page,SB_VERT,&info);check(info.nPos==0,"scrollbar drag escaped upper bound");
+        SendMessageW(page,WM_VSCROLL,SB_BOTTOM,0);
+        RECT last{};GetWindowRect(child(window,OcrAzerbaijani),&last);MapWindowPoints(nullptr,page,reinterpret_cast<POINT*>(&last),2);
+        check(last.top>=0&&last.bottom<=viewport.bottom,"last OCR language clipped at scroll bottom");
     });
     run("startup and update settings survive UI edits", [&] {
         panel.set_settings(Settings{});
@@ -308,22 +392,22 @@ int main(int argc,char** argv) {
         click(child(window, Apply));
         check(saved_settings.start_with_windows && !saved_settings.automatic_updates && saved_settings.update_channel == L"https://example.com/stable.txt", "application settings saved");
     });
-    run("settings have four sections and persistent notification choices", [&] {
+    run("settings have five navigation sections and persistent notification choices", [&] {
         panel.set_settings(Settings{});panel.show(true,false);
         HWND sections=child(window,227),notifications=child(window,225);
-        check(SendMessageW(sections,CB_GETCOUNT,0,0)==5,"five settings sections");
+        check(SendMessageW(sections,LB_GETCOUNT,0,0)==5,"five settings sections");
         check(SendMessageW(notifications,CB_GETCOUNT,0,0)==3,"three notification modes");
         click(child(window,228));check(exported==1,"explicit diagnostic export callback");
         SendMessageW(notifications,CB_SETCURSEL,1,0);
-        SendMessageW(sections,CB_SETCURSEL,3,0);
-        SendMessageW(window,WM_COMMAND,MAKEWPARAM(227,CBN_SELCHANGE),reinterpret_cast<LPARAM>(sections));
+        SendMessageW(sections,LB_SETCURSEL,3,0);
+        SendMessageW(window,WM_COMMAND,MAKEWPARAM(227,LBN_SELCHANGE),reinterpret_cast<LPARAM>(sections));
         check((GetWindowLongPtrW(child(window,AutoUpdate),GWL_STYLE)&WS_VISIBLE)!=0 && (GetWindowLongPtrW(notifications,GWL_STYLE)&WS_VISIBLE)==0,"only update section visible");
         click(child(window,Apply));check(saved_settings.notifications==NotificationMode::Errors,"hidden draft preserved");
     });
     run("module actions and busy state", [&] {
         PanelState state;state.modules={L"AVIF — не установлен"};state.module_detail=L"Загрузка 11 МБ; зависимости: нет";
-        panel.update(state);HWND sections=child(window,227);SendMessageW(sections,CB_SETCURSEL,4,0);
-        SendMessageW(window,WM_COMMAND,MAKEWPARAM(227,CBN_SELCHANGE),reinterpret_cast<LPARAM>(sections));
+        panel.update(state);HWND sections=child(window,227);SendMessageW(sections,LB_SETCURSEL,4,0);
+        SendMessageW(window,WM_COMMAND,MAKEWPARAM(227,LBN_SELCHANGE),reinterpret_cast<LPARAM>(sections));
         check((GetWindowLongPtrW(child(window,140),GWL_STYLE)&WS_VISIBLE)!=0,"module section visible");
         check(control_text(child(window,141))==state.module_detail,"module sizes and dependencies visible");
         click(child(window,142));click(child(window,143));click(child(window,145));

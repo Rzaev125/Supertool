@@ -1,5 +1,8 @@
 #include "control_panel.h"
 #include "resource.h"
+#include "panel_theme.h"
+#include <dwmapi.h>
+#include <uxtheme.h>
 #include <commctrl.h>
 #include <windowsx.h>
 #include <shobjidl.h>
@@ -25,8 +28,16 @@ enum Control : int {
     HistorySearch = 120, HistoryLabel, ClearHistory,
     UpdateInfo = 130, CheckUpdate, InstallUpdate, LaterUpdate,
     Modules=140,ModuleInfo,InstallModule,RemoveModule,CancelModule,RefreshModules,
-    Codec=320,CodecLabel,ImageMetadataChoice,ImageMetadataLabel
+    Codec=320,CodecLabel,ImageMetadataChoice,ImageMetadataLabel,
+    SectionTitle=350,SectionHint
 };
+constexpr std::array section_names{L"Основные",L"Конвертация",L"Колесо",L"Обновления",L"Модули"};
+constexpr std::array section_hints{
+    L"Работа приложения и сохранение готовых файлов.",
+    L"Параметры новых задач. 0 — исходный размер или автоматический битрейт.",
+    L"Оставьте нужные форматы и задайте порядок в меню Shift.",
+    L"Проверка и установка новых версий приложения.",
+    L"Добавляйте компоненты для нужных типов файлов."};
 struct CategoryEntry { Category category; const wchar_t* name; const wchar_t* sample; };
 constexpr std::array categories{
     CategoryEntry{Category::Image, L"Изображения", L"sample.png"},
@@ -98,8 +109,14 @@ bool unsigned_value(HWND control, unsigned& result) {
 struct ControlPanel::Impl {
     HWND window = nullptr, page = nullptr;
     HINSTANCE instance = nullptr;
-    HFONT font = nullptr, heading_font = nullptr;
-    HBRUSH background = CreateSolidBrush(RGB(250, 251, 253));
+    HFONT font = nullptr, heading_font = nullptr, section_font = nullptr;
+    panel_theme::Palette palette = panel_theme::colors();
+    HBRUSH background = CreateSolidBrush(palette.canvas), surface = CreateSolidBrush(palette.surface), input = CreateSolidBrush(palette.input);
+    struct Card { int top, height; const wchar_t* title; };
+    std::vector<Card> cards;
+    bool feedback_success = false;
+    bool scroll_drag = false;
+    int scroll_grab = 0;
     UINT dpi = 96;
     int scroll = 0, category_index = 0, settings_section = 0;
     bool settings_visible = false, rebuilding = false;
@@ -114,16 +131,24 @@ struct ControlPanel::Impl {
         if (window) DestroyWindow(window);
         if (font) DeleteObject(font);
         if (heading_font) DeleteObject(heading_font);
+        if (section_font) DeleteObject(section_font);
         if (background) DeleteObject(background);
+        if (surface) DeleteObject(surface);
+        if (input) DeleteObject(input);
     }
     int px(int value) const { return MulDiv(value, static_cast<int>(dpi), 96); }
     HWND main_control(int id) const { return GetDlgItem(window, id); }
     HWND setting(int id) const { return GetDlgItem(page, id); }
     HWND add(HWND parent, int id, const wchar_t* type, const wchar_t* text,
              DWORD style = 0, DWORD extended = 0) {
+        if (lstrcmpiW(type,L"COMBOBOX")==0) style |= CBS_OWNERDRAWFIXED | CBS_HASSTRINGS;
+        if (lstrcmpiW(type,L"EDIT")==0) { extended &= ~WS_EX_CLIENTEDGE; style |= WS_BORDER; }
+        if (lstrcmpiW(type,WC_LISTVIEWW)==0) { extended &= ~WS_EX_CLIENTEDGE; style |= WS_BORDER; }
         HWND control = CreateWindowExW(extended, type, text, WS_CHILD | WS_VISIBLE | style,
             0, 0, 0, 0, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), instance, nullptr);
         if (control) SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(font), FALSE);
+        if (control && (lstrcmpiW(type,L"COMBOBOX")==0 || lstrcmpiW(type,L"EDIT")==0)) SetWindowTheme(control,L"",L"");
+        if (control && lstrcmpiW(type,L"EDIT")==0) SendMessageW(control,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(px(8),px(8)));
         return control;
     }
     HWND task(int id, const wchar_t* type, const wchar_t* text, DWORD style = 0, DWORD extended = 0) {
@@ -138,11 +163,14 @@ struct ControlPanel::Impl {
         if (HWND control = setting(id)) MoveWindow(control, px(x), px(y) - scroll, px(width), px(height), TRUE);
     }
     void make_fonts() {
-        HFONT old = font, old_heading = heading_font;
-        font = CreateFontW(-MulDiv(10, static_cast<int>(dpi), 72), 0, 0, 0, FW_NORMAL,
+        HFONT old = font, old_heading = heading_font, old_section = section_font;
+        font = CreateFontW(-MulDiv(11, static_cast<int>(dpi), 72), 0, 0, 0, FW_NORMAL,
             FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
             CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
-        heading_font = CreateFontW(-MulDiv(13, static_cast<int>(dpi), 72), 0, 0, 0, FW_SEMIBOLD,
+        heading_font = CreateFontW(-MulDiv(18, static_cast<int>(dpi), 72), 0, 0, 0, FW_SEMIBOLD,
+            FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+            CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
+        section_font = CreateFontW(-MulDiv(11, static_cast<int>(dpi), 72), 0, 0, 0, FW_SEMIBOLD,
             FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
             CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
         if (window) {
@@ -150,12 +178,25 @@ struct ControlPanel::Impl {
                 SendMessageW(child, WM_SETFONT, static_cast<WPARAM>(value), TRUE); return TRUE;
             }, reinterpret_cast<LPARAM>(font));
             SendMessageW(main_control(Headline), WM_SETFONT, reinterpret_cast<WPARAM>(heading_font), TRUE);
+            SendMessageW(setting(SectionTitle),WM_SETFONT,reinterpret_cast<WPARAM>(heading_font),TRUE);
+            SendMessageW(main_control(SettingsSection),LB_SETITEMHEIGHT,0,px(48));
+            TabCtrl_SetItemSize(main_control(Tabs),px(120),px(36));
+            EnumChildWindows(window,[](HWND control,LPARAM value)->BOOL {
+                auto* self=reinterpret_cast<Impl*>(value);wchar_t type[32]{};GetClassNameW(control,type,32);
+                if(lstrcmpiW(type,L"COMBOBOX")==0) {
+                    SendMessageW(control,CB_SETITEMHEIGHT,static_cast<WPARAM>(-1),self->px(26));
+                    SendMessageW(control,CB_SETITEMHEIGHT,0,self->px(30));
+                    SendMessageW(control,CB_SETDROPPEDWIDTH,0,self->px(GetDlgCtrlID(control)==ImageMetadataChoice?680:360));
+                }
+                return TRUE;
+            },reinterpret_cast<LPARAM>(this));
         }
         if (old) DeleteObject(old);
         if (old_heading) DeleteObject(old_heading);
+        if (old_section) DeleteObject(old_section);
     }
     bool create_controls() {
-        add(window, Tabs, WC_TABCONTROLW, L"", WS_TABSTOP);
+        add(window, Tabs, WC_TABCONTROLW, L"", WS_TABSTOP | TCS_FIXEDWIDTH | TCS_OWNERDRAWFIXED);
         TCITEMW tab{}; tab.mask = TCIF_TEXT;
         tab.pszText = const_cast<wchar_t*>(L"Задачи"); TabCtrl_InsertItem(main_control(Tabs), 0, &tab);
         tab.pszText = const_cast<wchar_t*>(L"Настройки"); TabCtrl_InsertItem(main_control(Tabs), 1, &tab);
@@ -182,12 +223,14 @@ struct ControlPanel::Impl {
         task(HistorySearch,L"EDIT",L"",WS_TABSTOP|ES_AUTOHSCROLL,WS_EX_CLIENTEDGE);
         task(ClearHistory,L"BUTTON",L"Очистить историю",WS_TABSTOP);
 
-        settings_controls.push_back(add(window, SettingsSection, L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST));
-        for(auto section : {L"Основные",L"Конвертация",L"Колесо",L"Обновления",L"Модули"}) SendMessageW(main_control(SettingsSection),CB_ADDSTRING,0,reinterpret_cast<LPARAM>(section));
-        SendMessageW(main_control(SettingsSection),CB_SETCURSEL,0,0);
+        settings_controls.push_back(add(window, SettingsSection, L"LISTBOX", L"", WS_TABSTOP | LBS_NOTIFY | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS | LBS_NOINTEGRALHEIGHT));
+        for(auto section : section_names) SendMessageW(main_control(SettingsSection),LB_ADDSTRING,0,reinterpret_cast<LPARAM>(section));
+        SendMessageW(main_control(SettingsSection),LB_SETCURSEL,0,0);
         page = CreateWindowExW(WS_EX_CONTROLPARENT, page_class, L"", WS_CHILD | WS_VSCROLL | WS_CLIPCHILDREN,
             0, 0, 0, 0, window, nullptr, instance, this);
         if (!page) return false;
+        add(page,SectionTitle,L"STATIC",section_names[0],SS_LEFT);
+        add(page,SectionHint,L"STATIC",section_hints[0],SS_LEFT);
         const auto combo = [&](int id) { return add(page, id, L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL); };
         const auto number = [&](int id) {
             HWND control = add(page, id, L"EDIT", L"", WS_TABSTOP | ES_NUMBER | ES_AUTOHSCROLL, WS_EX_CLIENTEDGE);
@@ -198,9 +241,9 @@ struct ControlPanel::Impl {
         for (const auto value : {L"Компактный файл", L"Сбалансированное", L"Высокое"}) SendMessageW(setting(Quality), CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
         label_control(ResourcesLabel, L"Использование ресурсов"); combo(Resources);
         for (const auto value : {L"Экономное", L"Сбалансированное", L"Быстрое"}) SendMessageW(setting(Resources), CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
-        label_control(ImageLabel, L"Размер изображения, пикс. (0 — исходный)"); number(ImageSize);
-        label_control(VideoLabel, L"Высота видео, пикс. (0 — исходная)"); number(VideoSize);
-        label_control(AudioLabel, L"Битрейт аудио, кбит/с (0 — авто)"); number(AudioBitrate);
+        label_control(ImageLabel, L"Изображение, пиксели"); number(ImageSize);
+        label_control(VideoLabel, L"Высота видео, пиксели"); number(VideoSize);
+        label_control(AudioLabel, L"Битрейт аудио, кбит/с"); number(AudioBitrate);
         label_control(PdfLabel, L"PDF в изображение, DPI"); number(PdfDpi);
         label_control(AccelerationLabel, L"Ускорение кодирования"); combo(Acceleration);
         label_control(ImageMetadataLabel, L"JPEG/TIFF, без GPS; остальные — без метаданных"); combo(ImageMetadataChoice);
@@ -248,9 +291,13 @@ struct ControlPanel::Impl {
         settings_controls.push_back(add(window, SettingsError, L"STATIC", L"", SS_LEFT | SS_NOPREFIX));
         settings_controls.push_back(add(window, Defaults, L"BUTTON", L"По умолчанию", WS_TABSTOP));
         settings_controls.push_back(add(window, Apply, L"BUTTON", L"Сохранить настройки", WS_TABSTOP | BS_DEFPUSHBUTTON));
-        EnumChildWindows(page, [](HWND control, LPARAM value) -> BOOL {
+        EnumChildWindows(window, [](HWND control, LPARAM value) -> BOOL {
             SetWindowSubclass(control, control_proc, 1, static_cast<DWORD_PTR>(value)); return TRUE;
         }, reinterpret_cast<LPARAM>(this));
+        for(const auto id : {Jobs,Formats}) {
+            const auto list=id==Jobs?main_control(id):setting(id);
+            ListView_SetBkColor(list,palette.input);ListView_SetTextBkColor(list,palette.input);ListView_SetTextColor(list,palette.text);
+        }
         make_fonts();
         load_draft(draft);
         update_state(state);
@@ -259,7 +306,12 @@ struct ControlPanel::Impl {
             std::all_of(settings_controls.begin(), settings_controls.end(), [](HWND control) { return control != nullptr; });
     }
 
-    int section_height() const { return settings_section == 0 ? 360 : settings_section == 1 ? 398 : settings_section == 2 ? 265 : 360; }
+    int section_height() const {
+        RECT rect{}; GetClientRect(page,&rect);
+        const bool narrow=MulDiv(rect.right,96,static_cast<int>(dpi))<556;
+        constexpr int heights[]{554,848,542,554,510};
+        return heights[settings_section]+(settings_section==1&&narrow?36:0);
+    }
     void layout_page() {
         if (!page) return;
         const std::vector<std::vector<int>> groups{
@@ -269,77 +321,79 @@ struct ControlPanel::Impl {
             {AutoUpdate,UpdateLabel,UpdateChannel,UpdateInfo,CheckUpdate,InstallUpdate,LaterUpdate},
             {Modules,ModuleInfo,InstallModule,RemoveModule,CancelModule,RefreshModules}};
         for(size_t i=0;i<groups.size();++i) for(auto id:groups[i]) ShowWindow(setting(id),i==static_cast<size_t>(settings_section)?SW_SHOW:SW_HIDE);
-        RECT rect{}; GetClientRect(page,&rect);
-        const int width=MulDiv(rect.right,96,static_cast<int>(dpi)), half=(width-60)/2,right=40+half;
-        if(settings_section == 0) {
-            move_setting(AutoShow,20,10,width-40,28); move_setting(Startup,20,48,width-40,28);
-            move_setting(NotificationsLabel,20,94,width-40,24);move_setting(Notifications,20,124,width-40,150);
-            move_setting(OutputLabel,20,172,width-40,24);move_setting(Output,20,202,width-152,29);move_setting(Browse,width-122,202,102,29);
-            move_setting(OutputHint,20,238,width-40,40);move_setting(ExportDiagnostics,20,300,240,32);
+        RECT rect{};GetClientRect(page,&rect);
+        const int width=MulDiv(rect.right,96,static_cast<int>(dpi)), inside=width-56, half=(inside-20)/2, right=48+half;
+        set_text(setting(SectionTitle),section_names[settings_section]);set_text(setting(SectionHint),section_hints[settings_section]);
+        move_setting(SectionTitle,24,4,inside,34);move_setting(SectionHint,24,44,inside,40);
+        cards.clear();
+        if(settings_section==0) {
+            cards={{92,218,L"Работа приложения"},{328,152,L"Результаты конвертации"}};
+            move_setting(AutoShow,28,138,inside,30);move_setting(Startup,28,178,inside,30);
+            move_setting(NotificationsLabel,28,220,inside,22);move_setting(Notifications,28,246,inside,180);
+            move_setting(OutputLabel,28,372,inside,22);move_setting(Output,28,398,inside-110,34);move_setting(Browse,width-126,398,98,34);
+            move_setting(OutputHint,28,440,inside,34);move_setting(ExportDiagnostics,28,498,242,36);
             EnableWindow(setting(ExportDiagnostics),static_cast<bool>(actions.export_diagnostics));
-        } else if(settings_section == 1) {
-            for(const auto& row : {std::array<int,5>{QualityLabel,Quality,ResourcesLabel,Resources,2},
-                std::array<int,5>{ImageLabel,ImageSize,VideoLabel,VideoSize,66},std::array<int,5>{AudioLabel,AudioBitrate,PdfLabel,PdfDpi,130}}) {
-                move_setting(row[0],20,row[4],half,23);move_setting(row[1],20,row[4]+26,half,row[1]==Quality?200:29);
-                move_setting(row[2],right,row[4],half,23);move_setting(row[3],right,row[4]+26,half,row[3]==Resources?200:29);
+        } else if(settings_section==1) {
+            cards={{92,264,L"Качество и размеры"},{374,120,L"Кодирование видео"},{512,154,L"Метаданные изображений"},{684,width<556?180:144,L"Распознавание сканов PDF"}};
+            for(const auto& row : {std::array<int,5>{QualityLabel,Quality,ResourcesLabel,Resources,138},
+                std::array<int,5>{ImageLabel,ImageSize,VideoLabel,VideoSize,212},std::array<int,5>{AudioLabel,AudioBitrate,PdfLabel,PdfDpi,286},
+                std::array<int,5>{CodecLabel,Codec,AccelerationLabel,Acceleration,420}}) {
+                move_setting(row[0],28,row[4],half,22);move_setting(row[1],28,row[4]+26,half,row[1]==Quality||row[1]==Codec?180:34);
+                move_setting(row[2],right,row[4],half,22);move_setting(row[3],right,row[4]+26,half,row[3]==Resources||row[3]==Acceleration?180:34);
             }
-            move_setting(CodecLabel,20,196,half,23);move_setting(Codec,20,222,half,160);
-            move_setting(AccelerationLabel,right,196,half,23);move_setting(Acceleration,right,222,half,140);
-            move_setting(ImageMetadataLabel,20,330,width-40,23);move_setting(ImageMetadataChoice,20,356,width-40,130);
-            move_setting(PdfOcr,20,260,width-40,26);move_setting(OcrEnglish,20,292,160,26);
-            move_setting(OcrRussian,190,292,160,26);move_setting(OcrAzerbaijani,360,292,width-380,26);
-        } else if(settings_section == 2) {
-            move_setting(WheelLabel,20,10,width-40,24);move_setting(WheelHint,20,40,width-40,40);
-            move_setting(CategoryLabel,20,92,178,22);move_setting(CategoryChoice,20,118,178,220);
-            move_setting(Formats,218,92,width-372,158);move_setting(MoveUp,width-134,92,114,30);move_setting(MoveDown,width-134,130,114,30);
-            ListView_SetColumnWidth(setting(Formats),0,px(width-394));
+            move_setting(ImageMetadataLabel,28,554,inside,40);move_setting(ImageMetadataChoice,28,604,inside,160);
+            move_setting(PdfOcr,28,730,inside,30);move_setting(OcrEnglish,28,774,width<556?160:inside/3,30);
+            move_setting(OcrRussian,width<556?202:28+inside/3,774,width<556?160:inside/3,30);
+            move_setting(OcrAzerbaijani,width<556?28:28+2*(inside/3),width<556?810:774,width<556?inside:inside/3,30);
+        } else if(settings_section==2) {
+            cards={{92,430,L"Выбор форматов"}};
+            move_setting(WheelLabel,28,136,inside,24);move_setting(WheelHint,28,170,inside,44);
+            move_setting(CategoryLabel,28,218,inside,22);move_setting(CategoryChoice,28,244,inside,220);
+            move_setting(Formats,28,294,inside-128,200);move_setting(MoveUp,width-144,294,116,36);move_setting(MoveDown,width-144,340,116,36);
+            ListView_SetColumnWidth(setting(Formats),0,px(inside-148));
         } else if(settings_section==3) {
-            move_setting(AutoUpdate,20,10,width-40,28);move_setting(UpdateLabel,20,60,width-40,23);move_setting(UpdateChannel,20,90,width-40,29);
-            move_setting(UpdateInfo,20,136,width-40,100);
-            move_setting(CheckUpdate,20,250,130,32);move_setting(InstallUpdate,162,250,180,32);move_setting(LaterUpdate,354,250,180,32);
+            cards={{92,300,L"Обновления приложения"},{410,120,L"Источник обновлений"}};
+            move_setting(AutoUpdate,28,138,inside,34);move_setting(UpdateInfo,28,186,inside,80);
+            move_setting(CheckUpdate,28,282,128,38);move_setting(InstallUpdate,168,282,180,38);move_setting(LaterUpdate,28,332,180,38);
+            move_setting(UpdateLabel,28,454,inside,22);move_setting(UpdateChannel,28,480,inside,34);
         } else {
-            move_setting(Modules,20,10,width-40,220);move_setting(ModuleInfo,20,56,width-40,170);
-            move_setting(InstallModule,20,242,210,32);move_setting(RemoveModule,242,242,110,32);
-            move_setting(CancelModule,20,290,210,32);move_setting(RefreshModules,242,290,190,32);
+            cards={{92,396,L"Компоненты конвертации"}};
+            move_setting(Modules,28,138,inside,220);move_setting(ModuleInfo,28,188,inside,156);
+            move_setting(InstallModule,28,362,210,38);move_setting(RemoveModule,250,362,116,38);
+            move_setting(CancelModule,28,412,210,38);move_setting(RefreshModules,250,412,190,38);
         }
+        InvalidateRect(page,nullptr,TRUE);
     }
     void layout() {
         if (!window || !main_control(Tabs)) return;
-        RECT rect{}; GetClientRect(window, &rect);
-        const int width = MulDiv(rect.right, 96, static_cast<int>(dpi));
-        const int height = MulDiv(rect.bottom, 96, static_cast<int>(dpi));
-        move(main_control(Tabs), 20, 16, width - 40, 32);
-        move(main_control(Headline), 20, 68, width - 140, 30);
-        move(main_control(ProgressText), width - 112, 74, 92, 24);
-        move(main_control(Summary), 20, 108, width - 40, 40);
-        move(main_control(Progress), 20, 150, width - 40, 10);
-        move(main_control(Cancel), 20, 176, 160, 32);
-        move(main_control(Pause), 192, 176, 218, 32);
-        move(main_control(Clear), 422, 176, 180, 32);
-        move(main_control(HistoryLabel),20,226,106,24);
-        move(main_control(HistorySearch),132,220,width-360,30);
-        move(main_control(ClearHistory),width-210,220,190,30);
-        const int list_height = std::max(70, height - 442);
-        move(main_control(Jobs), 20, 262, width - 40, list_height);
-        const int name_width = (width - 62) * 46 / 100;
-        ListView_SetColumnWidth(main_control(Jobs), 0, px(name_width));
-        ListView_SetColumnWidth(main_control(Jobs), 1, px(86));
-        ListView_SetColumnWidth(main_control(Jobs), 2, px(width - 62 - name_width - 86));
-        move(main_control(JobDetail), 20, 276 + list_height, width - 40, 88);
-        move(main_control(Open), 20, height - 50, 188, 32);
-        move(main_control(Retry), 220, height - 50, 132, 32);
-        move(main_control(Remove), 364, height - 50, 188, 32);
-        move(main_control(SettingsSection),20,68,width-40,180);
-        move(page, 0, 112, width, height - 212);
-        RECT viewport{}; GetClientRect(page, &viewport);
-        SCROLLINFO info{sizeof(info), SIF_RANGE | SIF_PAGE | SIF_POS};
-        info.nMin = 0; info.nMax = px(section_height()) - 1; info.nPage = static_cast<UINT>(std::max(0L, viewport.bottom));
-        scroll = std::clamp(scroll, 0, std::max(0, px(section_height()) - static_cast<int>(viewport.bottom))); info.nPos = scroll;
-        SetScrollInfo(page, SB_VERT, &info, TRUE);
-        move(main_control(SettingsError), 20, height - 91, width - 40, 35);
-        move(main_control(Defaults), 20, height - 47, 154, 32);
-        move(main_control(Apply), width - 230, height - 47, 210, 32);
-        layout_page();
+        RECT rect{};GetClientRect(window,&rect);
+        const int width=MulDiv(rect.right,96,static_cast<int>(dpi)), height=MulDiv(rect.bottom,96,static_cast<int>(dpi));
+        move(main_control(Tabs),width-284,22,260,38);
+        move(main_control(Headline),24,104,width-144,34);move(main_control(ProgressText),width-116,114,92,24);
+        move(main_control(Summary),24,148,width-48,40);move(main_control(Progress),24,190,width-48,10);
+        move(main_control(Cancel),24,216,160,36);move(main_control(Pause),196,216,218,36);move(main_control(Clear),426,216,180,36);
+        move(main_control(HistoryLabel),24,274,106,24);move(main_control(HistorySearch),136,268,width-372,32);move(main_control(ClearHistory),width-214,268,190,34);
+        const int list_height=std::max(54,height-490);
+        move(main_control(Jobs),24,312,width-48,list_height);
+        const int name_width=(width-70)*46/100;
+        ListView_SetColumnWidth(main_control(Jobs),0,px(name_width));ListView_SetColumnWidth(main_control(Jobs),1,px(86));ListView_SetColumnWidth(main_control(Jobs),2,px(width-70-name_width-86));
+        const int detail_height=std::clamp(height-68-(326+list_height),32,88);
+        move(main_control(JobDetail),24,326+list_height,width-48,detail_height);
+        move(main_control(Open),24,height-54,188,38);move(main_control(Retry),224,height-54,132,38);move(main_control(Remove),368,height-54,188,38);
+        move(main_control(SettingsSection),20,96,184,252);
+        move(page,216,96,width-240,height-216);
+        // Measure without a native bar first; its width can wrap the last OCR row.
+        ShowScrollBar(page,SB_VERT,FALSE);
+        RECT viewport{};GetClientRect(page,&viewport);
+        const bool native_bar=palette.high_contrast&&px(section_height())>viewport.bottom;
+        ShowScrollBar(page,SB_VERT,native_bar);
+        GetClientRect(page,&viewport);
+        SCROLLINFO info{sizeof(info),SIF_RANGE|SIF_PAGE|SIF_POS};info.nMin=0;info.nMax=px(section_height())-1;info.nPage=static_cast<UINT>(std::max(0L,viewport.bottom));
+        scroll=std::clamp(scroll,0,std::max(0,px(section_height())-static_cast<int>(viewport.bottom)));info.nPos=scroll;SetScrollInfo(page,SB_VERT,&info,FALSE);
+        ShowScrollBar(page,SB_VERT,native_bar);
+        move(main_control(SettingsError),240,height-112,width-264,44);
+        move(main_control(Defaults),240,height-54,170,38);move(main_control(Apply),width-246,height-54,222,38);
+        layout_page();InvalidateRect(window,nullptr,TRUE);
     }
     void switch_tab(bool settings) {
         settings_visible = settings;
@@ -424,7 +478,7 @@ struct ControlPanel::Impl {
         rebuilding = false;
         selection_changed();
     }
-    void settings_error(const wchar_t* message) { set_text(main_control(SettingsError), message); }
+    void settings_error(const wchar_t* message, bool success = false) { feedback_success=success;set_text(main_control(SettingsError),message);InvalidateRect(main_control(SettingsError),nullptr,TRUE); }
     void save_visible_formats() {
         if (!setting(Formats)) return;
         std::vector<Format> visible;
@@ -539,7 +593,7 @@ struct ControlPanel::Impl {
         Settings result;
         if (!read_settings(result)) return;
         if (!actions.save) { settings_error(L"Сохранение настроек сейчас недоступно."); return; }
-        try { actions.save(result); draft = std::move(result); settings_error(L"Настройки сохранены. Они применятся к новым задачам."); }
+        try { actions.save(result); draft = std::move(result); settings_error(L"Настройки сохранены. Они применятся к новым задачам.",true); }
         catch (const std::exception& error) { settings_error((L"Не удалось сохранить настройки. " + exception_reason(error)).c_str()); }
         catch (...) { settings_error(L"Не удалось сохранить настройки. Проверьте доступ к папке программы и повторите попытку."); }
     }
@@ -589,8 +643,8 @@ struct ControlPanel::Impl {
             save_visible_formats(); category_index = static_cast<int>(SendMessageW(setting(CategoryChoice), CB_GETCURSEL, 0, 0));
             category_index = std::clamp(category_index, 0, static_cast<int>(categories.size()) - 1); fill_formats(); return;
         }
-        if(id == SettingsSection && notification == CBN_SELCHANGE) {
-            settings_section=static_cast<int>(SendMessageW(main_control(SettingsSection),CB_GETCURSEL,0,0));
+        if(id == SettingsSection && notification == LBN_SELCHANGE) {
+            settings_section=static_cast<int>(SendMessageW(main_control(SettingsSection),LB_GETCURSEL,0,0));
             if(settings_section<0 || settings_section>4) settings_section=0;
             scroll=0;layout();return;
         }
@@ -637,6 +691,21 @@ struct ControlPanel::Impl {
     }
     LRESULT notify(NMHDR* header) {
         if (rebuilding || !header) return 0;
+        wchar_t type[32]{};GetClassNameW(header->hwndFrom,type,32);
+        if(header->code==NM_CUSTOMDRAW && (header->idFrom==Formats||header->idFrom==Jobs)) {
+            const auto& draw=*reinterpret_cast<NMLVCUSTOMDRAW*>(header);
+            if(draw.nmcd.dwDrawStage==CDDS_PREPAINT)return CDRF_NOTIFYITEMDRAW;
+            if(draw.nmcd.dwDrawStage==CDDS_ITEMPREPAINT) {
+                paint_list_row(draw);return CDRF_SKIPDEFAULT;
+            }
+        }
+        if(header->code==NM_CUSTOMDRAW && lstrcmpiW(type,L"Button")==0) {
+            const auto& draw=*reinterpret_cast<NMCUSTOMDRAW*>(header);
+            if(draw.dwDrawStage==CDDS_PREPAINT) {
+                panel_theme::button(draw,palette,font,dpi,header->idFrom==Apply);
+                return CDRF_SKIPDEFAULT;
+            }
+        }
         if (header->idFrom == Tabs && header->code == TCN_SELCHANGE) switch_tab(TabCtrl_GetCurSel(main_control(Tabs)) == 1);
         if (header->idFrom == Jobs && header->code == LVN_ITEMCHANGED) selection_changed();
         if (header->idFrom == Jobs && header->code == NM_DBLCLK) command(Open, BN_CLICKED);
@@ -672,7 +741,7 @@ struct ControlPanel::Impl {
         }
     }
     void ensure_visible(HWND control) {
-        if (!settings_visible || !page) return;
+        if (!settings_visible || !page || GetParent(control)!=page) return;
         RECT item{}, viewport{}; GetWindowRect(control, &item); GetClientRect(page, &viewport);
         MapWindowPoints(nullptr, page, reinterpret_cast<POINT*>(&item), 2);
         int delta = 0;
@@ -685,12 +754,163 @@ struct ControlPanel::Impl {
         auto* self = reinterpret_cast<Impl*>(reference);
         if (message == WM_SETFOCUS) self->ensure_visible(hwnd);
         if (message == WM_NCDESTROY) RemoveWindowSubclass(hwnd, control_proc, subclass_id);
-        return DefSubclassProc(hwnd, message, wparam, lparam);
+        wchar_t type[32]{};GetClassNameW(hwnd,type,32);
+        if((GetDlgCtrlID(hwnd)==Tabs || lstrcmpiW(type,WC_HEADERW)==0) && (message==WM_PAINT||message==WM_PRINTCLIENT)) {
+            PAINTSTRUCT paint{};const HDC dc=message==WM_PAINT?BeginPaint(hwnd,&paint):reinterpret_cast<HDC>(wparam);
+            if(GetDlgCtrlID(hwnd)==Tabs)self->paint_tabs(hwnd,dc);else self->paint_header(hwnd,dc);
+            if(message==WM_PAINT)EndPaint(hwnd,&paint);
+            return 0;
+        }
+        const auto result=DefSubclassProc(hwnd,message,wparam,lparam);
+        if(lstrcmpiW(type,L"ComboBox")==0 && (message==WM_PAINT||message==WM_PRINTCLIENT)) {
+            const HDC dc=message==WM_PAINT?GetDC(hwnd):reinterpret_cast<HDC>(wparam);
+            panel_theme::combo_border(hwnd,dc,self->palette,self->dpi);
+            if(message==WM_PAINT)ReleaseDC(hwnd,dc);
+        }
+        if((lstrcmpiW(type,L"Edit")==0||lstrcmpiW(type,WC_LISTVIEWW)==0) && message==WM_NCPAINT) {
+            const auto dc=GetWindowDC(hwnd);RECT r{};GetWindowRect(hwnd,&r);OffsetRect(&r,-r.left,-r.top);
+            const auto brush=CreateSolidBrush(GetFocus()==hwnd?self->palette.accent:self->palette.border);
+            FrameRect(dc,&r,brush);DeleteObject(brush);ReleaseDC(hwnd,dc);
+        }
+        return result;
     }
     LRESULT colors(HWND control, HDC dc) const {
-        SetBkColor(dc, RGB(250, 251, 253));
-        SetTextColor(dc, control == main_control(SettingsError) ? RGB(126, 48, 30) : RGB(28, 38, 54));
-        return reinterpret_cast<LRESULT>(background);
+        const int id=GetDlgCtrlID(control);
+        wchar_t type[32]{};GetClassNameW(control,type,32);
+        const bool field=lstrcmpiW(type,L"Edit")==0 || lstrcmpiW(type,L"ComboLBox")==0 || lstrcmpiW(type,L"ComboBox")==0;
+        const bool in_card=GetParent(control)==page && id!=SectionTitle && id!=SectionHint;
+        const bool secondary=id==SectionHint||id==OutputHint||id==WheelHint||id==ImageMetadataLabel;
+        SetBkColor(dc,field?palette.input:in_card?palette.surface:palette.canvas);
+        SetTextColor(dc,id==SettingsError&&!palette.high_contrast?(feedback_success?RGB(119,220,172):RGB(255,164,150)):secondary?palette.muted:palette.text);
+        return reinterpret_cast<LRESULT>(field?input:in_card?surface:background);
+    }
+    void paint_page(HDC dc) const {
+        RECT r{};GetClientRect(page,&r);panel_theme::fill(dc,r,palette.canvas);
+        for(const auto& card:cards) {
+            RECT bounds{px(8),px(card.top)-scroll,r.right-px(8),px(card.top+card.height)-scroll};
+            panel_theme::box(dc,bounds,palette.surface,palette.border,px(12));
+            RECT label{px(28),bounds.top+px(14),bounds.right-px(20),bounds.top+px(38)};
+            panel_theme::text(dc,card.title,label,section_font,palette.text);
+        }
+        const auto thumb=scroll_thumb();
+        if(!palette.high_contrast&&thumb.bottom>thumb.top)panel_theme::box(dc,thumb,scroll_drag?palette.accent:palette.border,scroll_drag?palette.accent:palette.border,px(5));
+    }
+    RECT scroll_thumb() const {
+        RECT r{};GetClientRect(page,&r);SCROLLINFO info{sizeof(info),SIF_ALL};GetScrollInfo(page,SB_VERT,&info);
+        if(info.nMax+1<=static_cast<int>(info.nPage)||r.bottom<=0)return {};
+        const int thumb=std::min(static_cast<int>(r.bottom),std::max(px(36),MulDiv(static_cast<int>(info.nPage),r.bottom,info.nMax+1)));
+        const int top=MulDiv(scroll,r.bottom-thumb,info.nMax+1-static_cast<int>(info.nPage));
+        return {r.right-px(5),top,r.right-px(1),top+thumb};
+    }
+    void drag_scroll(int y) {
+        RECT r{};GetClientRect(page,&r);const auto thumb=scroll_thumb();
+        SCROLLINFO info{sizeof(info),SIF_ALL};GetScrollInfo(page,SB_VERT,&info);
+        const int travel=r.bottom-(thumb.bottom-thumb.top);
+        if(travel>0) {const int target=MulDiv(y-scroll_grab,info.nMax+1-static_cast<int>(info.nPage),travel);scroll_page(-1,scroll-target);}
+    }
+    void paint_window(HDC dc) const {
+        RECT r{};GetClientRect(window,&r);panel_theme::fill(dc,r,palette.canvas);
+        auto icon=static_cast<HICON>(LoadImageW(instance,MAKEINTRESOURCEW(IDI_SHIFTWHEEL),IMAGE_ICON,px(36),px(36),LR_SHARED));
+        if(icon)DrawIconEx(dc,px(24),px(22),icon,px(36),px(36),0,nullptr,DI_NORMAL);
+        panel_theme::text(dc,L"ShiftWheel",RECT{px(72),px(14),px(330),px(46)},heading_font,palette.text);
+        panel_theme::text(dc,L"Конвертация файлов",RECT{px(73),px(46),px(330),px(66)},font,palette.muted);
+        panel_theme::fill(dc,RECT{px(24),px(80),r.right-px(24),px(81)},palette.border);
+        if(settings_visible) {
+            panel_theme::fill(dc,RECT{px(215),px(96),px(216),r.bottom-px(24)},palette.border);
+            panel_theme::fill(dc,RECT{px(240),r.bottom-px(124),r.right-px(24),r.bottom-px(123)},palette.border);
+            panel_theme::text(dc,L"Зажми Shift",RECT{px(24),r.bottom-px(80),px(204),r.bottom-px(56)},section_font,palette.muted);
+            panel_theme::text(dc,L"при перетаскивании",RECT{px(24),r.bottom-px(54),px(204),r.bottom-px(32)},font,palette.muted);
+        }
+    }
+    void paint_tabs(HWND control,HDC dc) const {
+        RECT r{};GetClientRect(control,&r);panel_theme::fill(dc,r,palette.canvas);
+        for(int i=0;i<2;++i) {
+            RECT item{};TabCtrl_GetItemRect(control,i,&item);InflateRect(&item,-px(2),-px(1));
+            const bool active=TabCtrl_GetCurSel(control)==i;
+            panel_theme::box(dc,item,active?palette.selection:palette.surface,active?palette.accent:palette.border,px(8));
+            panel_theme::text(dc,i?L"Настройки":L"Задачи",item,section_font,active?palette.selected_text:palette.muted,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
+            if(GetFocus()==control&&active) {InflateRect(&item,-px(3),-px(3));DrawFocusRect(dc,&item);}
+        }
+    }
+    void paint_header(HWND control,HDC dc) const {
+        RECT r{};GetClientRect(control,&r);panel_theme::fill(dc,r,palette.surface);
+        for(int i=0;i<Header_GetItemCount(control);++i) {
+            RECT item{};Header_GetItemRect(control,i,&item);item.left+=px(10);
+            wchar_t title[160]{};HDITEMW h{};h.mask=HDI_TEXT;h.pszText=title;h.cchTextMax=160;Header_GetItem(control,i,&h);
+            panel_theme::text(dc,title,item,section_font,palette.muted);
+        }
+    }
+    void paint_list_row(const NMLVCUSTOMDRAW& draw) const {
+        const auto list=draw.nmcd.hdr.hwndFrom;const int index=static_cast<int>(draw.nmcd.dwItemSpec);
+        RECT row{};ListView_GetItemRect(list,index,&row,LVIR_BOUNDS);
+        const bool selected=(ListView_GetItemState(list,index,LVIS_SELECTED)&LVIS_SELECTED)!=0;
+        const auto saved=SaveDC(draw.nmcd.hdc);IntersectClipRect(draw.nmcd.hdc,row.left,row.top,row.right,row.bottom);
+        panel_theme::fill(draw.nmcd.hdc,row,selected?palette.selection:palette.input);
+        const int columns=draw.nmcd.hdr.idFrom==Formats?1:3;
+        int left=0;
+        for(int column=0;column<columns;++column) {
+            wchar_t value[512]{};ListView_GetItemText(list,index,column,value,512);
+            const int width=ListView_GetColumnWidth(list,column);
+            RECT cell{left+px(10),row.top,left+width-px(8),row.bottom};
+            if(draw.nmcd.hdr.idFrom==Formats) {
+                const bool checked=ListView_GetCheckState(list,index)!=FALSE;
+                const int side=px(15);RECT mark{px(3),row.top+(row.bottom-row.top-side)/2,px(3)+side,0};mark.bottom=mark.top+side;
+                panel_theme::box(draw.nmcd.hdc,mark,checked?palette.accent:palette.input,palette.border,px(4));
+                if(checked) {
+                    const auto pen=CreatePen(PS_SOLID,std::max(1,px(2)),palette.high_contrast?palette.selected_text:palette.canvas);
+                    SelectObject(draw.nmcd.hdc,pen);POINT points[]{{mark.left+px(3),mark.top+px(7)},{mark.left+px(6),mark.top+px(11)},{mark.left+px(12),mark.top+px(3)}};
+                    Polyline(draw.nmcd.hdc,points,3);SelectObject(draw.nmcd.hdc,GetStockObject(BLACK_PEN));DeleteObject(pen);
+                }
+                cell.left=px(26);
+            }
+            panel_theme::text(draw.nmcd.hdc,value,cell,font,selected?palette.selected_text:palette.text);left+=width;
+        }
+        if(selected&&GetFocus()==list) {InflateRect(&row,-1,-1);DrawFocusRect(draw.nmcd.hdc,&row);}
+        RestoreDC(draw.nmcd.hdc,saved);
+    }
+    LRESULT draw_item(const DRAWITEMSTRUCT& item) const {
+        if(item.CtlType==ODT_TAB) { paint_tabs(item.hwndItem,item.hDC);return TRUE; }
+        if(item.CtlType!=ODT_LISTBOX && item.CtlType!=ODT_COMBOBOX)return FALSE;
+        RECT rect=item.rcItem;
+        const bool selected=(item.itemState&ODS_SELECTED)!=0;
+        const bool navigation=item.CtlType==ODT_LISTBOX;
+        panel_theme::fill(item.hDC,rect,navigation?palette.canvas:palette.input);
+        if(item.itemID==static_cast<UINT>(-1))return TRUE;
+        std::wstring value;
+        if(navigation&&item.itemID<section_names.size())value=section_names[item.itemID];
+        else if(!navigation) {
+            const auto count=SendMessageW(item.hwndItem,CB_GETLBTEXTLEN,item.itemID,0);
+            if(count>=0&&count<4096) {value.resize(static_cast<size_t>(count)+1);SendMessageW(item.hwndItem,CB_GETLBTEXT,item.itemID,reinterpret_cast<LPARAM>(value.data()));}
+        }
+        if(navigation) {
+            InflateRect(&rect,-px(3),-px(3));
+            if(selected) {
+                panel_theme::box(item.hDC,rect,palette.selection,palette.selection,px(8));
+                panel_theme::fill(item.hDC,RECT{rect.left,rect.top+px(11),rect.left+px(3),rect.bottom-px(11)},palette.accent);
+            }
+            rect.left+=px(16);rect.right-=px(8);
+        } else {
+            if(selected&&!(item.itemState&ODS_COMBOBOXEDIT))panel_theme::fill(item.hDC,rect,palette.selection);
+            rect.left+=px(10);rect.right-=px((item.itemState&ODS_COMBOBOXEDIT)?30:8);
+        }
+        panel_theme::text(item.hDC,value.c_str(),rect,navigation?section_font:font,
+            (item.itemState&ODS_DISABLED)?palette.muted:selected?palette.selected_text:palette.text);
+        if(item.itemState&ODS_FOCUS) {InflateRect(&rect,-px(2),-px(2));DrawFocusRect(item.hDC,&rect);}
+        return TRUE;
+    }
+    void refresh_theme() {
+        palette=panel_theme::colors();
+        for(auto brush:{background,surface,input})if(brush)DeleteObject(brush);
+        background=CreateSolidBrush(palette.canvas);surface=CreateSolidBrush(palette.surface);input=CreateSolidBrush(palette.input);
+        const BOOL dark=!palette.high_contrast;DwmSetWindowAttribute(window,DWMWA_USE_IMMERSIVE_DARK_MODE,&dark,sizeof(dark));
+        const COLORREF caption=palette.high_contrast?DWMWA_COLOR_DEFAULT:palette.canvas,caption_text=palette.high_contrast?DWMWA_COLOR_DEFAULT:palette.text;
+        DwmSetWindowAttribute(window,DWMWA_CAPTION_COLOR,&caption,sizeof(caption));
+        DwmSetWindowAttribute(window,DWMWA_TEXT_COLOR,&caption_text,sizeof(caption_text));
+        for(const auto id:{Jobs,Formats}) {
+            const auto list=id==Jobs?main_control(id):setting(id);
+            ListView_SetBkColor(list,palette.input);ListView_SetTextBkColor(list,palette.input);ListView_SetTextColor(list,palette.text);
+        }
+        layout();RedrawWindow(window,nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN);
     }
     static LRESULT CALLBACK page_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
         auto* self = reinterpret_cast<Impl*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
@@ -700,12 +920,27 @@ struct ControlPanel::Impl {
         }
         if (self) {
             switch (message) {
+            case WM_DRAWITEM: return self->draw_item(*reinterpret_cast<DRAWITEMSTRUCT*>(lparam));
+            case WM_MEASUREITEM: reinterpret_cast<MEASUREITEMSTRUCT*>(lparam)->itemHeight=self->px(30);return TRUE;
             case WM_COMMAND: self->command(LOWORD(wparam), HIWORD(wparam)); return 0;
             case WM_NOTIFY: return self->notify(reinterpret_cast<NMHDR*>(lparam));
             case WM_VSCROLL: self->scroll_page(LOWORD(wparam)); return 0;
+            case WM_LBUTTONDOWN: {
+                RECT r{};GetClientRect(hwnd,&r);const auto thumb=self->scroll_thumb();
+                if(!self->palette.high_contrast&&GET_X_LPARAM(lparam)>=r.right-self->px(14)&&thumb.bottom>thumb.top) {
+                    const int y=GET_Y_LPARAM(lparam);self->scroll_grab=y>=thumb.top&&y<=thumb.bottom?y-thumb.top:(thumb.bottom-thumb.top)/2;
+                    self->scroll_drag=true;SetCapture(hwnd);self->drag_scroll(y);return 0;
+                }break;
+            }
+            case WM_MOUSEMOVE: if(self->scroll_drag){self->drag_scroll(GET_Y_LPARAM(lparam));return 0;}break;
+            case WM_LBUTTONUP: if(self->scroll_drag){self->scroll_drag=false;ReleaseCapture();InvalidateRect(hwnd,nullptr,FALSE);return 0;}break;
+            case WM_CAPTURECHANGED: self->scroll_drag=false;InvalidateRect(hwnd,nullptr,FALSE);return 0;
             case WM_MOUSEWHEEL: self->scroll_page(-1, MulDiv(GET_WHEEL_DELTA_WPARAM(wparam), self->px(96), WHEEL_DELTA)); return 0;
             case WM_CTLCOLORSTATIC: return self->colors(reinterpret_cast<HWND>(lparam), reinterpret_cast<HDC>(wparam));
-            case WM_ERASEBKGND: { RECT rect{}; GetClientRect(hwnd, &rect); FillRect(reinterpret_cast<HDC>(wparam), &rect, self->background); return 1; }
+            case WM_CTLCOLOREDIT: case WM_CTLCOLORLISTBOX: case WM_CTLCOLORBTN: return self->colors(reinterpret_cast<HWND>(lparam),reinterpret_cast<HDC>(wparam));
+            case WM_PAINT: { PAINTSTRUCT paint{};const auto dc=BeginPaint(hwnd,&paint);self->paint_page(dc);EndPaint(hwnd,&paint);return 0; }
+            case WM_PRINTCLIENT: self->paint_page(reinterpret_cast<HDC>(wparam));return 0;
+            case WM_ERASEBKGND: self->paint_page(reinterpret_cast<HDC>(wparam));return 1;
             }
         }
         return DefWindowProcW(hwnd, message, wparam, lparam);
@@ -718,6 +953,8 @@ struct ControlPanel::Impl {
         }
         if (self) {
             switch (message) {
+            case WM_DRAWITEM: return self->draw_item(*reinterpret_cast<DRAWITEMSTRUCT*>(lparam));
+            case WM_MEASUREITEM: reinterpret_cast<MEASUREITEMSTRUCT*>(lparam)->itemHeight=self->px(48);return TRUE;
             case WM_CLOSE: ShowWindow(hwnd, SW_HIDE); return 0;
             case WM_COMMAND: self->command(LOWORD(wparam), HIWORD(wparam)); return 0;
             case WM_NOTIFY: return self->notify(reinterpret_cast<NMHDR*>(lparam));
@@ -734,7 +971,11 @@ struct ControlPanel::Impl {
                 self->layout(); return 0;
             }
             case WM_CTLCOLORSTATIC: return self->colors(reinterpret_cast<HWND>(lparam), reinterpret_cast<HDC>(wparam));
-            case WM_ERASEBKGND: { RECT rect{}; GetClientRect(hwnd, &rect); FillRect(reinterpret_cast<HDC>(wparam), &rect, self->background); return 1; }
+            case WM_CTLCOLOREDIT: case WM_CTLCOLORLISTBOX: case WM_CTLCOLORBTN: return self->colors(reinterpret_cast<HWND>(lparam),reinterpret_cast<HDC>(wparam));
+            case WM_SYSCOLORCHANGE: case WM_SETTINGCHANGE: self->refresh_theme();return 0;
+            case WM_PAINT: { PAINTSTRUCT paint{};const auto dc=BeginPaint(hwnd,&paint);self->paint_window(dc);EndPaint(hwnd,&paint);return 0; }
+            case WM_PRINTCLIENT: self->paint_window(reinterpret_cast<HDC>(wparam));return 0;
+            case WM_ERASEBKGND: self->paint_window(reinterpret_cast<HDC>(wparam));return 1;
             case WM_NCDESTROY: self->window = nullptr; self->page = nullptr; SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0); break;
             }
         }
@@ -765,11 +1006,11 @@ HRESULT ControlPanel::initialize(HINSTANCE instance, const Settings& settings, P
     impl_->make_fonts();
     if (!impl_->create_controls()) { shutdown(); return E_OUTOFMEMORY; }
     RECT work{}; SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
-    const int width = std::min(impl_->px(840), static_cast<int>(work.right - work.left));
+    const int width = std::min(impl_->px(1040), static_cast<int>(work.right - work.left));
     const int height = std::min(impl_->px(790), static_cast<int>(work.bottom - work.top));
     SetWindowPos(impl_->window, nullptr, work.left + std::max(0L, (work.right - work.left - width) / 2),
         work.top + std::max(0L, (work.bottom - work.top - height) / 2), width, height, SWP_NOACTIVATE | SWP_NOZORDER);
-    impl_->layout();
+    impl_->refresh_theme();impl_->layout();
     return S_OK;
 }
 void ControlPanel::update(const PanelState& state) { impl_->update_state(state); }
