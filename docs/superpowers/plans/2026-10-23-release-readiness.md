@@ -23,10 +23,12 @@
 
 ### Task2: Available external readiness
 
-- [ ] Read-only OS/monitor/VM availability and signing-variable presence checks; no private content or VM starts.
+- [x] Read-only OS/monitor/VM availability and signing-variable presence checks; no private content or VM starts.
 - [ ] Collect user's actual test-file Shift-drag result if supplied. Keep missing real keys and clean-VM/mixed-DPI/disk-full cases open.
 
 ### Task3: Verify and record
 
-- [ ] Run CI guard and focused existing signature/update tests, YAML syntax check if parser available; one fresh read-only review.
-- [ ] Document exact results/limits, commit locally, archive this plan's ledger. Preserve all frozen0.14 release artifacts.
+- [x] Run CI guard and focused existing signature/update tests, YAML syntax check if parser available; one fresh read-only review.
+- [x] Document exact results/limits, commit locally, archive this plan's ledger. Preserve all frozen0.14 release artifacts.
+
+Доступный CI этап завершён: guard GREEN,4 мутации отклонены,4/4 signing/update PASS4.05с, ревью0/0/0. Пользователь сообщил, что VM нет; Sandbox executable не обнаружен. Физический Shift-drag ожидает ответа и не помечается выполненным.
