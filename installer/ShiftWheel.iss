@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "0.15.0"
+  #define AppVersion "0.15.1"
 #endif
 #ifndef PayloadDir
   #error PayloadDir is required; use scripts/build-installer.ps1
@@ -18,6 +18,7 @@ AppVersion={#AppVersion}
 AppVerName=ShiftWheel {#AppVersion}
 AppPublisher=ShiftWheel
 VersionInfoVersion={#AppVersion}.0
+SetupIconFile=..\resources\branding\shiftwheel.ico
 #ifndef IsolatedRoot
 DefaultDirName={localappdata}\Programs\ShiftWheel
 #else

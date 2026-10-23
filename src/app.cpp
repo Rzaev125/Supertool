@@ -1,4 +1,5 @@
 #include "app.h"
+#include "resource.h"
 #include "modules.h"
 #include "updates.h"
 #include "update_state.h"
@@ -65,6 +66,7 @@ public:
         executable_ = executable; settings_.start_with_windows = startup_enabled(executable_);
         if (update_failed_) startup_notice_ = L"Обновление не установлено. Повторите проверку через меню трея. Автоматическая повторная попытка отложена; ручная проверка доступна.";
         WNDCLASSW cls{}; cls.lpfnWndProc = window_proc; cls.hInstance = instance; cls.lpszClassName = L"ShiftWheel.Controller";
+        cls.hIcon = LoadIconW(instance, MAKEINTRESOURCEW(IDI_SHIFTWHEEL));
         if (!RegisterClassW(&cls) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) throw std::runtime_error("Не удалось создать окно управления.");
         window_ = CreateWindowExW(WS_EX_TOOLWINDOW, cls.lpszClassName, L"ShiftWheel", WS_OVERLAPPED, 0, 0, 0, 0, nullptr, nullptr, instance, this);
         if (!window_) throw std::runtime_error("Не удалось создать окно управления.");
@@ -301,7 +303,8 @@ private:
     void add_tray() {
         NOTIFYICONDATAW icon{sizeof(icon)}; icon.hWnd = window_; icon.uID = 1;
         icon.uFlags = NIF_MESSAGE | NIF_ICON | tray_tooltip_flags; icon.uCallbackMessage = wm_tray;
-        icon.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+        icon.hIcon = static_cast<HICON>(LoadImageW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDI_SHIFTWHEEL),
+            IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_SHARED));
         wcscpy_s(icon.szTip, L"ShiftWheel · перетащи файл и зажми Shift");
         tray_ = Shell_NotifyIconW(NIM_ADD, &icon) != FALSE;
         if (tray_) { icon.uVersion = NOTIFYICON_VERSION_4; Shell_NotifyIconW(NIM_SETVERSION, &icon); }

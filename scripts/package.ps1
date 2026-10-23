@@ -2,7 +2,7 @@
 $ErrorActionPreference='Stop'
 Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1') -Force
 $root=Split-Path $PSScriptRoot -Parent
-$version='0.15.0'
+$version='0.15.1'
 $exe=Join-Path $root "build\$Configuration\ShiftWheel.exe"
 if((Get-Item -LiteralPath $exe).VersionInfo.ProductVersion -ne $version){throw 'Build the matching version first.'}
 # Fresh release tree; never remove engines or state from a portable user's folder.

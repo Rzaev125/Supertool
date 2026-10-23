@@ -1,4 +1,5 @@
 #include "control_panel.h"
+#include "resource.h"
 #include <commctrl.h>
 #include <windowsx.h>
 #include <shobjidl.h>
@@ -750,7 +751,10 @@ HRESULT ControlPanel::initialize(HINSTANCE instance, const Settings& settings, P
     if (!InitCommonControlsEx(&common)) return HRESULT_FROM_WIN32(GetLastError());
     WNDCLASSEXW type{}; type.cbSize = sizeof(type); type.hInstance = instance; type.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     type.lpfnWndProc = Impl::window_proc; type.lpszClassName = panel_class;
-    type.hIcon = LoadIconW(nullptr, IDI_APPLICATION); type.hIconSm = type.hIcon;
+    type.hIcon = static_cast<HICON>(LoadImageW(instance, MAKEINTRESOURCEW(IDI_SHIFTWHEEL), IMAGE_ICON,
+        GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), LR_SHARED));
+    type.hIconSm = static_cast<HICON>(LoadImageW(instance, MAKEINTRESOURCEW(IDI_SHIFTWHEEL), IMAGE_ICON,
+        GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_SHARED));
     if (!RegisterClassExW(&type) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return HRESULT_FROM_WIN32(GetLastError());
     type.lpfnWndProc = Impl::page_proc; type.lpszClassName = page_class;
     if (!RegisterClassExW(&type) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return HRESULT_FROM_WIN32(GetLastError());

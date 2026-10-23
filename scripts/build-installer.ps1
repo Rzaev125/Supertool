@@ -1,5 +1,5 @@
 param(
-    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.15.0',
+    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.15.1',
     [string]$PayloadDirectory = '',
     [string]$TestRoot = '',
     [ValidateSet('full','core')][string]$Distribution='full'
