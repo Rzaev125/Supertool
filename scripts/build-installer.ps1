@@ -18,7 +18,8 @@ if ($isolated) {
     $allowed = Join-Path $root 'build\installer-tests'
     if (-not $TestRoot.StartsWith($allowed + '\', [StringComparison]::OrdinalIgnoreCase) -or $TestRoot.Contains('"')) { throw 'TestRoot must be a dedicated directory inside build\installer-tests.' }
 }
-& (Join-Path $root 'installer\stage-payload.ps1') -PayloadDirectory $PayloadDirectory -StageDirectory $stage -Version $Version -AllowTestPayload:($isolated -and $Distribution -ne 'core') -Distribution $Distribution
+$fixturePayload = $isolated -and $Distribution -eq 'full' -and -not (Test-Path -LiteralPath (Join-Path $PayloadDirectory 'release.json'))
+& (Join-Path $root 'installer\stage-payload.ps1') -PayloadDirectory $PayloadDirectory -StageDirectory $stage -Version $Version -AllowTestPayload:$fixturePayload -Distribution $Distribution
 $compiler = & (Join-Path $PSScriptRoot 'fetch-installer-tools.ps1')
 $name = 'ShiftWheel-' + $Version + $(if($Distribution -eq 'core'){'-core'}else{''}) + '-win-x64-setup'
 if ($isolated) { $name += '-ISOLATED-TEST' }

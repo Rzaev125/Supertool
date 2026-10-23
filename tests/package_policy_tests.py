@@ -44,7 +44,8 @@ for kind,requested,metadata in [('full-labelled-core','core','full'),('core-labe
  release=dict(version='0.9.0',executable_sha256=digest(p/'ShiftWheel.exe'))
  if metadata is not None:release['distribution']=metadata
  (p/'release.json').write_text(json.dumps(release))
- r=run(ROOT/'scripts/build-installer.ps1','-Version','0.9.0','-Distribution',requested,'-PayloadDirectory',p)
+ isolated=ROOT/'build/installer-tests'/(WORK.name+'-'+kind)
+ r=run(ROOT/'scripts/build-installer.ps1','-Version','0.9.0','-Distribution',requested,'-PayloadDirectory',p,'-TestRoot',isolated)
  ok=r.returncode==0 if kind=='valid-core' else r.returncode!=0 and b'distribution' in (r.stdout+r.stderr).lower()
  if not ok:failures.append(kind+': distribution contract not enforced')
  print(kind,'PASS' if ok else 'FAIL',flush=True)
