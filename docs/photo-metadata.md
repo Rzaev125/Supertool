@@ -17,3 +17,13 @@ GPS, камера, объектив, серийные номера, MakerNotes, 
 Режим сохраняется в INI, worker snapshot и очереди SWQ3 (значение2); формат очереди не изменён. Старые сборки не знают photo_details/2 и отклонят такие настройки/очередь. Перед откатом используйте отдельную папку профиля либо резервную копию INI и очереди, созданную до выбора нового режима. Старые Remove/CaptureDate и очереди SWQ1/SWQ2 остаются совместимыми с0.15.
 
 Основы: [libheif properties1.23.6](https://github.com/strukturag/libheif/blob/v1.23.6/libheif/api/libheif/heif_properties.h), [libheif PNG metadata reset](https://github.com/strukturag/libheif/blob/v1.23.6/heifio/encoder_png.cc), [WIC metadata queries](https://learn.microsoft.com/en-us/windows/win32/wic/-wic-native-image-format-metadata-queries).
+
+## Регрессионная проверка очистки
+
+`tests/photo_metadata_tests.py` создаёт JPEG/TIFF/HEIC с настоящим XMP (JPEG APP1, TIFF700, HEIC MIME application/rdf+xml), декодируемой JPEG-миниатюрой12×8 и заведомо неверными EXIF-размерами9999×7777. JPEG/HEIC используют EXIF IFD1; TIFF — reduced-resolution SubIFD, не вторую страницу. Наличие каждого исходного payload проверяется до конвертации, HEIC содержит как EXIF с миниатюрой, так и отдельный XMP item.
+
+Матрица:3 источника ×3 режима ×8 выходов (JPG, TIFF, PNG, BMP, WebP, AVIF, HEIC, GIF) =72 конвертации с уменьшением80×48→40×24. Очистка проверяется непосредственно в готовом контейнере, без повторной конвертации. JPEG/TIFF сохраняют разрешённые поля согласно режиму; остальные выходы не получают фото-метаданные. Исходники хэшируются, рабочие каталоги должны удаляться.
+
+Десять независимых отрицательных образцов проверяют чувствительность теста: сохранённый XMP/текст/профиль в каждом из8 выходных форматов плюс отдельно EXIF-миниатюра и старые размеры. В них отсутствуют sentinel-строки исходных payload: отказ должен быть вызван структурой контейнера с ожидаемой причиной, а не только поиском известной строки. В PNG XMP сжат; BMP содержит настоящий ICC в BITMAPV5HEADER. Это не исчерпывающая проверка всех вариантов расширенного/сжатого XMP и всех производителей файлов.
+
+Поля BMP-контроля сверены с [Microsoft BITMAPV5HEADER](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-bitmapv5header); идентификатор GIF XMP application — с [Adobe GIF handler](https://github.com/adobe/XMP-Toolkit-SDK/blob/main/XMPFiles/source/FileHandlers/GIF_Handler.cpp).
