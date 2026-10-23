@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "0.13.0"
+  #define AppVersion "0.14.0"
 #endif
 #ifndef PayloadDir
   #error PayloadDir is required; use scripts/build-installer.ps1

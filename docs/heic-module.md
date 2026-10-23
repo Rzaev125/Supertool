@@ -6,7 +6,7 @@ Run `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-heic.ps1`
 
 ## Supported behavior
 
-- Static, 8-bit SDR HEIC/HEIF, including alpha, and conversions to/from PNG, JPEG, BMP, TIFF, WebP and AVIF.
+- Static, 8-bit SDR HEIC/HEIF (local0.14 also supports10/12-bit BT.2020 PQ/HLG to SDR; see [HDR images](hdr-images.md)), including alpha, and conversions to/from PNG, JPEG, BMP, TIFF, WebP and AVIF.
 - A single top-level image; attached thumbnails and the alpha auxiliary image do not count as additional frames.
 - Container rotation (`irot`), reflection (`imir`) and clean-aperture crop (`clap`) are applied by libheif before PNG output. Codec padding is cropped correctly. EXIF orientation other than 1 is refused explicitly because applying both EXIF and HEIF transforms can rotate twice.
 - ICC profiles are retained by the decoder and required by WIC color management before normalization to sRGB. Without ICC, only sRGB/unspecified NCLX primaries and transfer are accepted. Export declares sRGB NCLX (1/13/6), 8-bit 4:4:4, and drops source metadata.
@@ -15,7 +15,7 @@ Run `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-heic.ps1`
 
 ## Explicit limitations
 
-HDR (PQ/HLG), 10/12-bit input, sequences, multiple top-level images, premultiplied alpha, depth maps and other auxiliary images (including HDR gain maps) are refused, with an actionable error. The app does not silently choose the first frame or discard a gain map. Normal thumbnails are allowed.
+Unsupported HDR metadata/ICC conflicts, high-depth SDR input, sequences, multiple top-level images, premultiplied alpha, depth maps and other auxiliary images (including HDR gain maps) are refused, with an actionable error. The app does not silently choose the first frame or discard a gain map. Normal thumbnails are allowed.
 
 Input limit is 1 GiB; decoded dimensions are limited to 40 million pixels and 32768 on either side. Original `ispe` and transformed dimensions are both checked before pixel decoding. Metadata parsing uses libheif's security limits tightened to 40 MP, 4 MiB profiles, 512 MiB per block and 1 GiB total. Pixel decoding retains the pinned tool's default safety limits. Decoder/encoder timeouts and cancellation remain in the existing Windows Job Object process boundary.
 
@@ -43,4 +43,4 @@ The official ImageMagick 7.1.2-34 portable build was tested during selection, bu
 
 ## Validation
 
-`tests/heic_tests.py --exe <path-to-ShiftWheel.exe>` creates real PNG/HEIC fixtures and checks round trips, alpha, Unicode, all raster bridges, quality/resize, rotation/reflection/crop, ICC normalization, damaged input, excessive dimensions, HDR/multiframe refusal and missing-module errors. Tests use Python/Pillow only to create and inspect fixtures; the app does not require Python.
+`tests/heic_tests.py --exe <path-to-ShiftWheel.exe>` creates real PNG/HEIC fixtures and checks round trips, alpha, Unicode, all raster bridges, quality/resize, rotation/reflection/crop, ICC normalization, damaged input, excessive dimensions, unsupported8-bit HDR/multiframe refusal and missing-module errors. `tests/hdr_image_tests.py` independently checks supported10/12-bit PQ/HLG color, alpha and guards. Tests use Python/Pillow only to create and inspect fixtures; the app does not require Python.
