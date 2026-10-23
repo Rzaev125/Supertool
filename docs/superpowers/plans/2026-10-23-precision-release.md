@@ -34,11 +34,13 @@
 
 ### Task2: Windows acceptance
 
-- [ ] Run local app with test settings and open only a generated fixture folder in Explorer; check actual drag/Shift where supported by available UI API, cancellation/geometry and conversion.
-- [ ] Record exact evidence and unsupported input/control or physical monitor/clean-VM constraints; restore settings and close only own test windows/app.
+- [x] Run local app with test settings and open only a generated fixture folder in Explorer; check actual drag/Shift where supported by available UI API, cancellation/geometry and conversion.
+- [x] Record exact evidence and unsupported input/control or physical monitor/clean-VM constraints; restore settings and close only own test windows/app.
 
 ### Task3: Release preparation
 
-- [ ] Prepare validation/release docs before package-policy tests; run complete CTest after UI app is closed; one read-only review.
-- [ ] Build fresh core/full ZIP and installers with existing audited packaging; verify manifests/hashes and isolated install/launch/conversion/update/uninstall lifecycle where available.
-- [ ] Record artifact hashes, unsigned status and remaining external signature/CI/VM steps; commit final evidence, keep branch local and archive only this plan's ledger.
+- [x] Prepare validation/release docs before package-policy tests; run complete CTest after UI app is closed; one read-only review.
+- [x] Build fresh core/full ZIP and installers with existing audited packaging; verify manifests/hashes and isolated install/launch/conversion/update/uninstall lifecycle where available.
+- [x] Record artifact hashes, unsigned status and remaining external signature/CI/VM steps; commit final evidence, keep branch local and archive only this plan's ledger.
+
+Результат:43/43 PASS270.70с, ревью0/0/0, core/full пакеты и оба изолированных lifecycle PASS. Ограничения физической приёмки/подписи остаются открытыми: docs/artifacts-0.14.0.md.
