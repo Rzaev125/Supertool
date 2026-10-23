@@ -6,6 +6,7 @@ namespace shiftwheel {
 enum class QualityPreset { Compact, Balanced, High };
 enum class ResourceMode { Economy, Balanced, Fast };
 enum class VideoAcceleration { Auto, Cpu };
+enum class VideoCodec { Default, H264, Hevc, Av1 };
 struct ConversionOptions {
     QualityPreset quality = QualityPreset::Balanced;
     ResourceMode resources = ResourceMode::Balanced;
@@ -13,6 +14,7 @@ struct ConversionOptions {
     bool pdf_ocr = true;
     std::string ocr_languages = "eng+rus+aze";
     VideoAcceleration video_acceleration = VideoAcceleration::Auto;
+    VideoCodec video_codec = VideoCodec::Default;
 };
 enum class NotificationMode { All, Errors, None };
 struct Settings {

@@ -50,7 +50,7 @@ struct Scenario {
             }
             const fs::path destination(call.arguments.back());
             check(!fs::exists(destination), "process cannot overwrite a foreign file");
-            if (encoder == L"h264_nvenc" || encoder == L"h264_qsv" || encoder == L"h264_amf") {
+            if (encoder.ends_with(L"_nvenc") || encoder.ends_with(L"_qsv") || encoder.ends_with(L"_amf")) {
                 hardware_partial = destination;
                 write(destination, "unfinished hardware output");
                 if (introduce_foreign) write(output, "foreign output appeared during encoding");
@@ -100,13 +100,13 @@ int wmain(int argc, wchar_t** argv) {
                     std::ofstream trace(work / "calls.tsv", std::ios::binary | std::ios::app);
                     trace << (probe(call) ? "probe" : "encode") << '\t' << utf8(encoder) << '\t' << utf8(call.progress_stage) << '\n';
                 }
-                if (probe(call) && (mode == L"unavailable" || (mode == L"intel" && encoder != L"h264_qsv") ||
-                    (mode == L"amd" && encoder != L"h264_amf"))) {
+                if (probe(call) && (mode == L"unavailable" || (mode == L"intel" && !encoder.ends_with(L"_qsv")) ||
+                    (mode == L"amd" && !encoder.ends_with(L"_amf")))) {
                     write(call.log, "controlled unavailable hardware at process boundary");
                     throw std::runtime_error("controlled unavailable hardware");
                 }
                 run_engine(call.executable, call.arguments, call.log, call.timeout_ms, call.duration_seconds, {}, {}, call.progress_stage);
-                if (!probe(call) && mode == L"runtime-failure" && (encoder == L"h264_nvenc" || encoder == L"h264_qsv" || encoder == L"h264_amf")) {
+                if (!probe(call) && mode == L"runtime-failure" && (encoder.ends_with(L"_nvenc") || encoder.ends_with(L"_qsv") || encoder.ends_with(L"_amf"))) {
                     std::ofstream(call.log, std::ios::app) << "controlled error after hardware wrote its output\n";
                     throw std::runtime_error("controlled error after real hardware output");
                 }
@@ -210,6 +210,45 @@ int wmain(int argc, wchar_t** argv) {
             if (std::wstring(encoder) == L"h264_amf") check(option(call, L"-rc") == L"cqp" && option(call, L"-qp_i") == q && option(call, L"-qp_p") == q && option(call, L"-qp_b") == q, "AMF requires explicit constant QP values");
             check(call.progress_stage.find(std::wstring(encoder) == L"h264_nvenc" ? L"NVIDIA" : std::wstring(encoder) == L"h264_qsv" ? L"Intel" : L"AMD") != std::wstring::npos, "progress stage must identify active GPU");
         }
+    });
+    test("new codec probes, fallback and container policy", [](const fs::path& path) {
+        fs::create_directory(path); unsigned n=0;
+        for (const auto codec : {VideoCodec::Hevc, VideoCodec::Av1}) {
+            const std::wstring prefix = codec==VideoCodec::Hevc ? L"hevc" : L"av1";
+            const std::wstring cpu = codec==VideoCodec::Hevc ? L"libx265" : L"libaom-av1";
+            for (const auto backend : {L"_nvenc", L"_qsv", L"_amf"}) {
+                Scenario run(path / std::to_wstring(++n)); run.available=prefix+backend;
+                ConversionOptions options; options.video_codec=codec; run.convert(options);
+                check(option(run.encodes()[0],L"-c:v")==run.available,"requested hardware codec lost");
+                for(const auto& call:run.probes()) check(option(call,L"-c:v").starts_with(prefix),"probe must request selected codec");
+                if(codec==VideoCodec::Hevc&&std::wstring(backend)==L"_amf")check(!flag(run.encodes()[0],L"-qp_b"),"HEVC AMF has no qp_b option");
+                run.fail_hardware=true;
+                Scenario retry(path / std::to_wstring(++n));retry.available=prefix+backend;retry.fail_hardware=true;retry.convert(options);
+                check(retry.encodes().size()==2&&option(retry.encodes()[1],L"-c:v")==cpu,"CPU fallback silently changed codec");
+                Scenario cancelled(path / std::to_wstring(++n));cancelled.available=prefix+backend;cancelled.cancel_hardware=true;
+                bool stopped=false;try{cancelled.convert(options);}catch(const EngineCancelled&){stopped=true;}
+                check(stopped&&cancelled.encodes().size()==1,"new codec cancellation retried");
+            }
+            Scenario unavailable(path / std::to_wstring(++n));unavailable.available=L"";
+            ConversionOptions options;options.video_codec=codec;unavailable.convert(options);
+            check(unavailable.probes().size()==3&&option(unavailable.encodes()[0],L"-c:v")==cpu,"missing GPU must use same CPU codec");
+            options.video_acceleration=VideoAcceleration::Cpu; options.resources=ResourceMode::Economy;
+            Scenario only_cpu(path / std::to_wstring(++n));only_cpu.convert(options);
+            check(only_cpu.probes().empty()&&option(only_cpu.encodes()[0],L"-c:v")==cpu,"CPU-only codec policy");
+            if(codec==VideoCodec::Hevc)check(option(only_cpu.encodes()[0],L"-x265-params").find(L"pools=1:frame-threads=1")!=std::wstring::npos,"x265 thread pool unbounded");
+            else check(option(only_cpu.encodes()[0],L"-row-mt")==L"1"&&option(only_cpu.encodes()[0],L"-threads")==L"1","AV1 CPU threads unbounded");
+            Scenario incompatible(path / std::to_wstring(++n)); bool failed=false;
+            try{incompatible.convert(options,codec==VideoCodec::Hevc?Format::Webm:Format::Mov);}catch(const std::runtime_error&){failed=true;}
+            check(failed&&incompatible.calls.empty()&&!fs::exists(incompatible.output),"container mismatch must fail before probes");
+            Scenario audio(path / std::to_wstring(++n));audio.convert(options,Format::Mp3);
+            check(audio.probes().empty()&&option(audio.encodes()[0],L"-c:v").empty(),"video codec must not affect audio");
+        }
+        Scenario explicit_h264(path / std::to_wstring(++n));ConversionOptions options;options.video_codec=VideoCodec::H264;bool failed=false;
+        try{explicit_h264.convert(options,Format::Webm);}catch(const std::runtime_error&){failed=true;}
+        check(failed&&explicit_h264.calls.empty(),"H264 cannot go into WebM");
+        options.video_codec=static_cast<VideoCodec>(99);failed=false;Scenario invalid(path / std::to_wstring(++n));
+        try{invalid.convert(options);}catch(const std::runtime_error&){failed=true;}
+        check(failed&&invalid.calls.empty(),"invalid codec enum must fail before processes");
     });
     remove_owned_tree(root);
     if (failures) std::cerr << failures << " media GPU tests failed\n";
