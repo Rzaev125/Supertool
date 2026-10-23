@@ -1,5 +1,5 @@
 param(
-    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.7.0',
+    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.8.0',
     [string]$PayloadDirectory = (Join-Path $PSScriptRoot '..\out\ShiftWheel'),
     [string]$TestRoot = ''
 )

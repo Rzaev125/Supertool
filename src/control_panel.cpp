@@ -21,7 +21,8 @@ enum Control : int {
     Apply, Defaults, SettingsError, PdfOcr, OcrEnglish, OcrRussian, OcrAzerbaijani, Acceleration, Startup, AutoUpdate, UpdateChannel, UpdateLabel, Notifications, NotificationsLabel, SettingsSection, ExportDiagnostics,
     QualityLabel = 300, ResourcesLabel, ImageLabel, VideoLabel, AudioLabel,
     PdfLabel, OutputLabel, OutputHint, WheelLabel, WheelHint, CategoryLabel, AccelerationLabel,
-    HistorySearch = 120, HistoryLabel, ClearHistory
+    HistorySearch = 120, HistoryLabel, ClearHistory,
+    UpdateInfo = 130, CheckUpdate, InstallUpdate, LaterUpdate
 };
 struct CategoryEntry { Category category; const wchar_t* name; const wchar_t* sample; };
 constexpr std::array categories{
@@ -214,10 +215,14 @@ struct ControlPanel::Impl {
         for(auto mode : {L"Все результаты",L"Только ошибки",L"Без уведомлений"}) SendMessageW(setting(Notifications),CB_ADDSTRING,0,reinterpret_cast<LPARAM>(mode));
         add(page, ExportDiagnostics, L"BUTTON", L"Экспорт диагностики…", WS_TABSTOP);
         add(page, Startup, L"BUTTON", L"Запускать вместе с Windows", WS_TABSTOP | BS_AUTOCHECKBOX);
-        add(page, AutoUpdate, L"BUTTON", L"Автоматически проверять и устанавливать обновления", WS_TABSTOP | BS_AUTOCHECKBOX);
+        add(page, AutoUpdate, L"BUTTON", L"Автоматически проверять и загружать обновления", WS_TABSTOP | BS_AUTOCHECKBOX);
         label_control(UpdateLabel, L"Канал обновлений (HTTPS)");
         add(page, UpdateChannel, L"EDIT", L"", WS_TABSTOP | ES_AUTOHSCROLL, WS_EX_CLIENTEDGE);
         SendMessageW(setting(UpdateChannel), EM_SETLIMITTEXT, 4096, 0);
+        add(page,UpdateInfo,L"STATIC",L"Проверка обновлений ещё не выполнялась.",SS_LEFT|SS_NOPREFIX);
+        add(page,CheckUpdate,L"BUTTON",L"Проверить",WS_TABSTOP);
+        add(page,InstallUpdate,L"BUTTON",L"Установить сейчас",WS_TABSTOP);
+        add(page,LaterUpdate,L"BUTTON",L"Позже — на сутки",WS_TABSTOP);
         label_control(WheelLabel, L"Форматы в круговом меню");
         label_control(WheelHint, L"Отметьте нужные форматы и расположите их по порядку. В каждой категории нужен хотя бы один.");
         label_control(CategoryLabel, L"Категория"); combo(CategoryChoice);
@@ -241,14 +246,14 @@ struct ControlPanel::Impl {
             std::all_of(settings_controls.begin(), settings_controls.end(), [](HWND control) { return control != nullptr; });
     }
 
-    int section_height() const { return settings_section == 0 ? 360 : settings_section == 1 ? 330 : settings_section == 2 ? 265 : 180; }
+    int section_height() const { return settings_section == 0 ? 360 : settings_section == 1 ? 330 : settings_section == 2 ? 265 : 360; }
     void layout_page() {
         if (!page) return;
         const std::vector<std::vector<int>> groups{
             {AutoShow,Startup,NotificationsLabel,Notifications,OutputLabel,Output,Browse,OutputHint,ExportDiagnostics},
             {QualityLabel,Quality,ResourcesLabel,Resources,ImageLabel,ImageSize,VideoLabel,VideoSize,AudioLabel,AudioBitrate,PdfLabel,PdfDpi,AccelerationLabel,Acceleration,PdfOcr,OcrEnglish,OcrRussian,OcrAzerbaijani},
             {WheelLabel,WheelHint,CategoryLabel,CategoryChoice,Formats,MoveUp,MoveDown},
-            {AutoUpdate,UpdateLabel,UpdateChannel}};
+            {AutoUpdate,UpdateLabel,UpdateChannel,UpdateInfo,CheckUpdate,InstallUpdate,LaterUpdate}};
         for(size_t i=0;i<groups.size();++i) for(auto id:groups[i]) ShowWindow(setting(id),i==static_cast<size_t>(settings_section)?SW_SHOW:SW_HIDE);
         RECT rect{}; GetClientRect(page,&rect);
         const int width=MulDiv(rect.right,96,static_cast<int>(dpi)), half=(width-60)/2,right=40+half;
@@ -274,6 +279,8 @@ struct ControlPanel::Impl {
             ListView_SetColumnWidth(setting(Formats),0,px(width-394));
         } else {
             move_setting(AutoUpdate,20,10,width-40,28);move_setting(UpdateLabel,20,60,width-40,23);move_setting(UpdateChannel,20,90,width-40,29);
+            move_setting(UpdateInfo,20,136,width-40,100);
+            move_setting(CheckUpdate,20,250,130,32);move_setting(InstallUpdate,162,250,180,32);move_setting(LaterUpdate,354,250,180,32);
         }
     }
     void layout() {
@@ -349,6 +356,10 @@ struct ControlPanel::Impl {
         state = std::move(next_copy);
         set_text(main_control(Headline), state.headline.empty() ? L"Готово к работе" : state.headline);
         set_text(main_control(Summary), state.detail);
+        set_text(setting(UpdateInfo),state.update_detail.empty()?L"Проверка обновлений ещё не выполнялась.":state.update_detail);
+        EnableWindow(setting(CheckUpdate),!state.update_checking&&static_cast<bool>(actions.check_update));
+        EnableWindow(setting(InstallUpdate),state.update_ready&&!state.update_checking&&static_cast<bool>(actions.install_update));
+        EnableWindow(setting(LaterUpdate),state.update_available&&static_cast<bool>(actions.later_update));
         set_text(main_control(ProgressText), state.running && state.percent >= 0 ? std::to_wstring(std::clamp(state.percent, 0, 100)) + L" %" : L"");
         SendMessageW(main_control(Progress), PBM_SETPOS, std::clamp(state.percent, 0, 100), 0);
         ShowWindow(main_control(Progress), !settings_visible && state.running && state.percent >= 0 ? SW_SHOW : SW_HIDE);
@@ -548,6 +559,11 @@ struct ControlPanel::Impl {
         if(id == ExportDiagnostics && actions.export_diagnostics) {
             try {actions.export_diagnostics();}catch(const std::exception& e){settings_error((L"Не удалось сохранить диагностику. "+exception_reason(e)).c_str());}
             return;
+        }
+        if(notification==BN_CLICKED&&(id==CheckUpdate||id==InstallUpdate||id==LaterUpdate)){
+            if(!IsWindowEnabled(setting(id)))return;
+            try{if(id==CheckUpdate&&actions.check_update)actions.check_update();if(id==InstallUpdate&&actions.install_update)actions.install_update();if(id==LaterUpdate&&actions.later_update)actions.later_update();}
+            catch(const std::exception& e){settings_error(exception_reason(e).c_str());}return;
         }
         if(id==HistorySearch&&notification==EN_CHANGE){update_state(unfiltered);return;}
         if (notification == EN_CHANGE || notification == CBN_SELCHANGE) { settings_error(L""); return; }

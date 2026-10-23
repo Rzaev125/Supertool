@@ -18,6 +18,7 @@ int wmain(int argc,wchar_t** argv) { try {
  for(auto u:{L"http://example.com/x",L"https://user:pass@example.com/x",L"https://example.com/x#frag",L"file:///x",L"https://example.com/x\r\nX:y"}) check(!https_url(u));
  const std::string good="version=0.7.0\nurl=https://example.com/setup.exe\nsize=3\nsha256=ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\n";
  auto r=parse_update_manifest(good); check(r.size==3 && r.version==L"0.7.0");
+ auto described=parse_update_manifest(good+"notes=Queue recovery and safer updates\n");check(described.notes==L"Queue recovery and safer updates");
  reject([&]{parse_update_manifest(good+"version=0.8.0\n");}); reject([&]{parse_update_manifest(good+"args=/evil\n");});
  reject([]{parse_update_manifest("version=1.0.0\n");}); reject([]{parse_update_manifest(std::string(17000,'a'));});
  auto path=std::filesystem::temp_directory_path()/(L"update-hash-"+std::to_wstring(GetCurrentProcessId()));
@@ -25,7 +26,8 @@ int wmain(int argc,wchar_t** argv) { try {
  check(!installed_copy(L"C:\\portable\\ShiftWheel.exe"));
  check(!startup_enabled(std::filesystem::path(L"C:\\"+std::wstring(250,L'a')+L"\\ShiftWheel.exe")));
  auto transport=[](const std::wstring&,unsigned long long limit,std::ostream& out,std::stop_token){check(limit==3);out<<"abc";};
- std::cerr<<"download test\n"; auto downloaded=download_update(r,{},transport); check(file_sha256(downloaded)==r.sha256); std::filesystem::remove(downloaded);std::filesystem::remove(downloaded.parent_path());
+ unsigned progress_events=0;
+ std::cerr<<"download test\n"; auto downloaded=download_update(r,{},transport,[&](auto got,auto total){check(got<=total);++progress_events;}); check(progress_events>0);check(file_sha256(downloaded)==r.sha256);std::filesystem::remove(downloaded.parent_path()/L".shiftwheel-update");std::filesystem::remove(downloaded);std::filesystem::remove(downloaded.parent_path());
  auto bad=r;bad.sha256=std::wstring(64,L'0');reject([&]{download_update(bad,{},transport);});
  auto wrong=r;wrong.size=4;reject([&]{download_update(wrong,{},[](auto&,auto,std::ostream& out,auto){out<<"abc";});});
  std::stop_source stop;stop.request_stop();reject([&]{download_update(r,stop.get_token(),transport);});

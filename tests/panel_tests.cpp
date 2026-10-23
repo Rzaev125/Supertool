@@ -38,7 +38,7 @@ int main(int argc,char** argv) {
     if (FAILED(OleInitialize(nullptr))) return 1;
     ControlPanel panel;
     int failed = 0, cancelled = 0, paused = 0, cleared = 0, saved = 0;
-    int exported = 0, history_cleared = 0;
+    int exported = 0, history_cleared = 0, update_checked=0,update_installed=0,update_later=0;
     uint64_t opened = 0, retried = 0, removed = 0;
     bool reject_save = false;
     std::string save_error = "Выберите существующую папку результата.";
@@ -47,6 +47,7 @@ int main(int argc,char** argv) {
     PanelActions actions;
     actions.export_diagnostics = [&] { ++exported; };
     actions.clear_history = [&] {++history_cleared;};
+    actions.check_update=[&]{++update_checked;};actions.install_update=[&]{++update_installed;};actions.later_update=[&]{++update_later;};
     actions.cancel = [&] { ++cancelled; };
     actions.pause_queue = [&] { ++paused; };
     actions.clear_queue = [&] { ++cleared; };
@@ -125,6 +126,14 @@ int main(int argc,char** argv) {
         check(IsWindow(window) && panel.handle() == window, "close retains panel");
         check((GetWindowLongPtrW(window, GWL_STYLE) & WS_VISIBLE) == 0, "close removes visibility");
         check(cancelled == 1, "close never cancels work");
+    });
+    run("update state and install/later actions are explicit",[&]{
+        panel.show(true,false);SendMessageW(child(window,227),CB_SETCURSEL,3,0);SendMessageW(window,WM_COMMAND,MAKEWPARAM(227,CBN_SELCHANGE),reinterpret_cast<LPARAM>(child(window,227)));
+        state.update_detail=L"Версия 0.8.0 — загружена";state.update_ready=true;state.update_available=true;panel.update(state);
+        check(control_text(child(window,130))==state.update_detail,"update state missing");
+        click(child(window,131));click(child(window,132));click(child(window,133));
+        check(update_checked==1&&update_installed==1&&update_later==1,"update callbacks");
+        state.update_ready=false;state.update_available=false;panel.update(state);check(!IsWindowEnabled(child(window,132)),"unchecked setup install enabled");
     });
     run("history search and clear never hide active queue", [&] {
         panel.update(state);auto before=ListView_GetItemCount(child(window,Jobs));

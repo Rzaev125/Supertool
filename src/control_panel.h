@@ -19,11 +19,14 @@ struct PanelState {
     bool running = false, queue_paused = false;
     std::vector<PanelRow> jobs;
     bool recovery_pending = false;
+    std::wstring update_detail;
+    bool update_checking=false,update_ready=false,update_available=false;
 };
 struct PanelActions {
     std::function<void()> cancel, pause_queue, clear_queue, export_diagnostics, clear_history;
     std::function<void(uint64_t)> open_result, retry, remove;
     std::function<void(const Settings&)> save;
+    std::function<void()> check_update,install_update,later_update;
 };
 class ControlPanel {
 public:

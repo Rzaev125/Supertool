@@ -1,5 +1,8 @@
 #include "app.h"
 #include "updates.h"
+#include "update_state.h"
+#include "update_signature.h"
+#include <mutex>
 #include "diagnostics.h"
 #include "tray_notifications.h"
 #include <shobjidl.h>
@@ -20,7 +23,7 @@ using Microsoft::WRL::ComPtr;
 namespace {
 constexpr UINT wm_tray = WM_APP + 1, wm_trigger = WM_APP + 2, wm_hide = WM_APP + 3, wm_mouse_up = WM_APP + 4;
 constexpr UINT wm_start_next = WM_APP + 5, wm_show_panel = WM_APP + 7, wm_update = WM_APP + 10;
-constexpr UINT wm_next_notification = WM_APP + 11;
+constexpr UINT wm_next_notification = WM_APP + 11, wm_update_progress = WM_APP + 12;
 constexpr UINT menu_preview = 1, menu_cancel = 2, menu_open = 3, menu_exit = 4, menu_tasks = 5, menu_settings = 6, menu_update = 7;
 class App {
 public:
@@ -45,6 +48,7 @@ public:
         executable.resize(length); settings_path_ = std::filesystem::path(executable).parent_path() / L"ShiftWheel.ini";
         try { settings_ = load_settings(settings_path_); }
         catch (const std::exception& error) { startup_notice_ = L"Настройки не загружены: " + from_utf8(error.what()); }
+        if(update_signature_configured()&&settings_.update_channel==L"https://raw.githubusercontent.com/Rzaev125/Supertool/main/updates/stable.txt")settings_.update_channel=L"https://raw.githubusercontent.com/Rzaev125/Supertool/main/updates/stable-signed.txt";
         diagnostic_ = std::make_unique<DiagnosticLog>(settings_path_.parent_path()/L"ShiftWheel.diagnostics.log");
         diagnostic_->append("session-start");
         queue_path_=settings_path_.parent_path()/L"ShiftWheel.queue";
@@ -56,7 +60,7 @@ public:
             }
         }catch(const std::exception& e){startup_notice_=from_utf8(e.what());}
         executable_ = executable; settings_.start_with_windows = startup_enabled(executable_);
-        if (update_failed_) startup_notice_ = L"Обновление не установлено. Повторите проверку через меню трея. Автоматические повторы приостановлены до следующего запуска.";
+        if (update_failed_) startup_notice_ = L"Обновление не установлено. Повторите проверку через меню трея. Автоматическая повторная попытка отложена; ручная проверка доступна.";
         WNDCLASSW cls{}; cls.lpfnWndProc = window_proc; cls.hInstance = instance; cls.lpszClassName = L"ShiftWheel.Controller";
         if (!RegisterClassW(&cls) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) throw std::runtime_error("Не удалось создать окно управления.");
         window_ = CreateWindowExW(WS_EX_TOOLWINDOW, cls.lpszClassName, L"ShiftWheel", WS_OVERLAPPED, 0, 0, 0, 0, nullptr, nullptr, instance, this);
@@ -65,7 +69,22 @@ public:
         wheel_->set_batch_handler([this](std::vector<std::filesystem::path> files, Format format) { enqueue(files, format); });
         wheel_->set_format_provider([this](const std::filesystem::path& input) { return configured_formats(input, settings_); });
         if (FAILED(wheel_->initialize(instance))) throw std::runtime_error("Не удалось создать колесо или зарегистрировать приём файлов.");
+        update_policy_path_=settings_path_.parent_path()/L"ShiftWheel.update-state";
+        try{update_policy_=load_update_policy(update_policy_path_);}catch(const std::exception& e){startup_notice_=from_utf8(e.what());}
+        if(update_failed_){update_policy_.failure(update_now());save_update_policy(update_policy_path_,update_policy_);}
+        if(!update_policy_.check_allowed(update_now(),false))update_status_=L"Автоматическая проверка отложена. Ручная проверка доступна.";
         PanelActions actions;
+        actions.check_update=[this]{check_updates(true);};
+        actions.install_update=[this]{
+            if(pending_setup_.empty())throw std::runtime_error("Проверенный установщик ещё не загружен.");
+            install_requested_=true;update_policy_.deferred_until=0;save_update_policy(update_policy_path_,update_policy_);
+            update_status_=L"Установка запрошена. Дождёмся завершения всей очереди.";refresh();PostMessageW(window_,wm_start_next,0,0);
+        };
+        actions.later_update=[this]{
+            install_requested_=false;update_policy_.later(update_now());save_update_policy(update_policy_path_,update_policy_);
+            ++update_generation_;update_thread_.request_stop();discard_update_download(pending_setup_);pending_setup_.clear();
+            update_status_=L"Обновление отложено на сутки. Очередь продолжит работу.";refresh();
+        };
         actions.export_diagnostics = [this] { export_diagnostics(); };
         actions.cancel = [this] { cancel(); };
         actions.pause_queue = [this] { recovery_pending_=false;queue_.set_paused(!queue_.paused()); refresh(); PostMessageW(window_, wm_start_next, 0, 0); };
@@ -93,7 +112,7 @@ public:
             try { if (next.start_with_windows != settings_.start_with_windows) set_startup(executable_, next.start_with_windows); }
             catch (...) { save_settings(settings_path_, previous); throw; }
             settings_ = next; startup_notice_.clear();
-            ++update_generation_; pending_setup_.clear();
+            ++update_generation_; install_requested_=false;discard_update_download(pending_setup_);pending_setup_.clear();
             SetTimer(window_, 2, 30000, nullptr);
             wheel_->hide(); panel_.set_settings(settings_); refresh();
         };
@@ -151,9 +170,9 @@ private:
     }
     void cancel() { if (worker_.busy()) { cancelling_ = true; worker_.cancel(); refresh(); } }
     void start_next(bool new_admission) {
-        if (!worker_.busy() && !queue_.pending() && !pending_setup_.empty()) {
+        if (may_install_update(install_requested_,worker_.busy(),queue_.pending()) && !pending_setup_.empty()) {
             try { launch_update_helper(pending_setup_, executable_, pending_hash_); PostQuitMessage(0); }
-            catch (const std::exception& e) { balloon(L"Обновление отложено", from_utf8(e.what()), NIIF_ERROR); pending_setup_.clear(); }
+            catch (const std::exception& e) { balloon(L"Обновление отложено", from_utf8(e.what()), NIIF_ERROR); pending_setup_.clear();install_requested_=false;update_policy_.failure(update_now());save_update_policy(update_policy_path_,update_policy_);update_status_=L"Установка не началась. Повторная попытка отложена.";refresh(); }
             return;
         }
         const bool show = new_admission && settings_.auto_show_progress && !IsWindowVisible(panel_.handle());
@@ -193,9 +212,11 @@ private:
         persist_queue();
         PanelState state; state.queue_paused = queue_.paused(); state.running = worker_.busy();
         state.recovery_pending=recovery_pending_;
+        state.update_detail=update_status_;state.update_checking=checking_;state.update_ready=!pending_setup_.empty()&&!install_requested_;
+        {std::lock_guard lock(update_mutex_);state.update_available=!available_release_.version.empty()&&newer_version(available_release_.version,app_version);}
         state.headline = queue_.paused() ? L"Очередь приостановлена" : L"Готов к конвертации";
         state.detail = startup_notice_.empty() ? L"Перетащите файлы и удерживайте Shift. В очереди: " + std::to_wstring(queue_.pending()) : startup_notice_;
-        if(recovery_pending_)state.detail=L"Найдена сохранённая очередь. Нажмите «Восстановить очередь» или очистите её. Конвертация ещё не запущена.";
+        if(recovery_pending_&&startup_notice_.empty())state.detail=L"Найдена сохранённая очередь. Нажмите «Восстановить очередь» или очистите её. Конвертация ещё не запущена.";
         if (auto active = queue_.active()) {
             const auto progress = worker_.progress();
             state.headline = cancelling_ ? L"Отменяем конвертацию…" : active->input.filename().wstring();
@@ -248,22 +269,32 @@ private:
         }
     }
     void check_updates(bool manual) {
-        if (checking_ || !pending_setup_.empty()) return;
-        if (settings_.update_channel.empty()) { if (manual) balloon(L"Обновления", L"Задайте HTTPS-канал в настройках.", NIIF_INFO); return; }
-        if (!manual && (update_failed_ || !settings_.automatic_updates)) return;
-        if (update_thread_.joinable()) update_thread_.join();
-        checking_ = true;
-        const auto channel = settings_.update_channel; const auto installed = installed_copy(executable_); const auto generation = update_generation_;
-        update_thread_ = std::jthread([this, channel, installed, manual, generation](std::stop_token stop) {
-            std::wstring notice; std::filesystem::path setup; std::wstring hash;
-            try { auto release = fetch_update(channel, stop);
-                if (!newer_version(release.version, app_version)) notice = L"Установлена актуальная версия.";
-                else if (!installed) notice = L"Доступна версия " + release.version + L". Для автоматической установки используйте установленную копию.";
-                else { setup = download_update(release, stop); hash = release.sha256; notice = L"Обновление загружено. Установка начнётся после завершения очереди."; }
-            } catch (const std::exception& e) { notice = from_utf8(e.what()); }
-            update_result_generation_ = generation;
-            update_notice_ = std::move(notice); update_setup_ = std::move(setup); update_hash_ = std::move(hash); update_manual_ = manual;
-            PostMessageW(window_, wm_update, 0, 0);
+        if(checking_)return;
+        if(!pending_setup_.empty()){update_status_=L"Обновление загружено. Выберите «Установить сейчас» или «Позже».";refresh();return;}
+        if(settings_.update_channel.empty()){if(manual){update_status_=L"Задайте HTTPS-канал и сохраните настройки.";refresh();}return;}
+        if(!manual&&(!settings_.automatic_updates||!update_policy_.check_allowed(update_now(),false)))return;
+        if(update_thread_.joinable())update_thread_.join();
+        checking_=true;update_status_=L"Проверяем обновления…";download_got_=0;download_total_=0;
+        {std::lock_guard lock(update_mutex_);available_release_={};}
+        refresh();
+        const auto channel=settings_.update_channel;const auto installed=installed_copy(executable_);const auto generation=update_generation_;const auto highest=update_policy_.highest_version;
+        update_thread_=std::jthread([this,channel,installed,manual,generation,highest](std::stop_token stop){
+            std::wstring notice;std::filesystem::path setup;std::wstring hash;bool success=false;
+            try{
+                auto release=fetch_update(channel,stop);
+                if(!highest.empty()&&newer_version(highest,release.version))throw std::runtime_error("Канал предлагает устаревшую версию. Обновление отклонено.");
+                {std::lock_guard lock(update_mutex_);available_release_=release;}
+                if(!newer_version(release.version,app_version))notice=L"Установлена актуальная версия.";
+                else if(!installed)notice=L"Доступна версия "+release.version+L". Переносимую копию обновите вручную через страницу выпусков GitHub.";
+                else{
+                    download_total_=release.size;PostMessageW(window_,wm_update_progress,0,0);ULONGLONG tick=0;
+                    setup=download_update(release,stop,{},[this,&tick](auto got,auto total){download_got_=got;download_total_=total;auto now=GetTickCount64();if(now-tick>=250||got==total){tick=now;PostMessageW(window_,wm_update_progress,0,0);}});
+                    hash=release.sha256;notice=L"Версия "+release.version+L" загружена и проверена. Выберите «Установить сейчас» или «Позже».";
+                }
+                success=true;
+            }catch(const std::exception& e){notice=from_utf8(e.what());}
+            update_result_generation_=generation;update_notice_=std::move(notice);update_setup_=std::move(setup);update_hash_=std::move(hash);update_manual_=manual;update_success_=success;
+            PostMessageW(window_,wm_update,0,0);
         });
     }
     void menu() {
@@ -359,13 +390,26 @@ private:
         case wm_mouse_up:
             if (self->wheel_ && self->wheel_->visible()) SetTimer(hwnd, 1, 250, nullptr);
             return 0;
+        case wm_update_progress:
+            if(self->checking_&&self->download_total_){
+                std::lock_guard lock(self->update_mutex_);
+                self->update_status_=L"Версия "+self->available_release_.version+L": загрузка "+std::to_wstring(self->download_got_*100/self->download_total_)+L"%\r\n"+self->available_release_.notes;
+            }
+            self->refresh();return 0;
         case wm_update:
-            if (self->update_thread_.joinable()) self->update_thread_.join();
-            self->checking_ = false;
-            if (self->update_result_generation_ != self->update_generation_) { if (!self->update_setup_.empty()) { std::error_code ec; std::filesystem::remove(self->update_setup_, ec); } return 0; }
-            if (!self->update_setup_.empty()) { self->pending_setup_ = std::move(self->update_setup_); self->pending_hash_ = self->update_hash_; }
-            if (self->update_manual_ || !self->pending_setup_.empty()) self->balloon(L"Обновления ShiftWheel", self->update_notice_, NIIF_INFO);
-            PostMessageW(hwnd, wm_start_next, 0, 0); return 0;
+            if(self->update_thread_.joinable())self->update_thread_.join();self->checking_=false;
+            if(self->update_result_generation_!=self->update_generation_){discard_update_download(self->update_setup_);self->update_setup_.clear();self->refresh();return 0;}
+            if(!self->update_setup_.empty()){self->pending_setup_=std::move(self->update_setup_);self->pending_hash_=self->update_hash_;}
+            self->update_status_=self->update_notice_;
+            if(self->update_success_){
+                self->update_policy_.success();
+                std::lock_guard lock(self->update_mutex_);
+                self->update_policy_.highest_version=self->available_release_.version;
+                if(!self->available_release_.notes.empty())self->update_status_+=L"\r\n"+self->available_release_.notes;
+            }else self->update_policy_.failure(update_now());
+            save_update_policy(self->update_policy_path_,self->update_policy_);
+            if(self->update_manual_||!self->pending_setup_.empty())self->balloon(L"Обновления ShiftWheel",self->update_notice_,self->update_success_?NIIF_INFO:NIIF_ERROR);
+            self->refresh();return 0;
         case WM_TIMER:
             if (w == 2) { SetTimer(hwnd, 2, 24 * 60 * 60 * 1000, nullptr); self->check_updates(false); return 0; }
             KillTimer(hwnd, w);
@@ -397,7 +441,13 @@ private:
         return DefWindowProcW(hwnd, message, w, l);
     }
     static App* current_;
-    std::filesystem::path executable_, pending_setup_, update_setup_;
+    std::filesystem::path executable_, pending_setup_, update_setup_,update_policy_path_;
+    UpdatePolicy update_policy_;
+    std::mutex update_mutex_;
+    UpdateRelease available_release_;
+    std::wstring update_status_;
+    std::atomic<unsigned long long> download_got_{0},download_total_{0};
+    bool install_requested_=false,update_success_=false;
     std::wstring pending_hash_, update_hash_, update_notice_;
     std::jthread update_thread_;
     std::atomic<bool> checking_{false};
