@@ -1,7 +1,8 @@
 param(
-    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.8.0',
+    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.9.0',
     [string]$PayloadDirectory = (Join-Path $PSScriptRoot '..\out\ShiftWheel'),
-    [string]$TestRoot = ''
+    [string]$TestRoot = '',
+    [ValidateSet('full','core')][string]$Distribution='full'
 )
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1') -Force
@@ -18,7 +19,7 @@ if ($isolated) {
 }
 & (Join-Path $root 'installer\stage-payload.ps1') -PayloadDirectory $PayloadDirectory -StageDirectory $stage -Version $Version -AllowTestPayload:$isolated
 $compiler = & (Join-Path $PSScriptRoot 'fetch-installer-tools.ps1')
-$name = 'ShiftWheel-' + $Version + '-win-x64-setup'
+$name = 'ShiftWheel-' + $Version + $(if($Distribution -eq 'core'){'-core'}else{''}) + '-win-x64-setup'
 if ($isolated) { $name += '-ISOLATED-TEST' }
 $arguments = @('/Qp',('/DAppVersion=' + $Version),('/DPayloadDir=' + $stage),('/DOutputDir=' + $output),('/DOutputName=' + $name))
 if ($isolated) { $arguments += '/DIsolatedRoot=' + $TestRoot }

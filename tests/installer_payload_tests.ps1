@@ -47,3 +47,17 @@ if ($TestReparsePoints) {
     Write-Host 'PASS: staging rejects a directory junction.'
 }
 Write-Host 'PASS: payload includes modules/licenses, excludes private/work files, records hashes, and rejects unverified releases.'
+
+$core=Join-Path $work 'core'
+[void][IO.Directory]::CreateDirectory($core)
+Copy-Item -LiteralPath (Join-Path $root 'build\Release\ShiftWheel.exe') -Destination $core
+$coreVersion=(Get-Item -LiteralPath (Join-Path $core 'ShiftWheel.exe')).VersionInfo.ProductVersion
+$coreHash=(Get-FileHash -LiteralPath (Join-Path $core 'ShiftWheel.exe')).Hash
+[IO.File]::WriteAllText((Join-Path $core 'release.json'),('{"version":"'+$coreVersion+'","executable_sha256":"'+$coreHash+'","distribution":"core"}'))
+& $script -PayloadDirectory $core -StageDirectory (Join-Path $work 'core-stage') -Version $coreVersion
+if(Test-Path -LiteralPath (Join-Path $work 'core-stage\modules')){throw 'FAIL: core unexpectedly includes modules'}
+[IO.File]::WriteAllText((Join-Path $core 'release.json'),('{"version":"'+$coreVersion+'","executable_sha256":"'+$coreHash+'","distribution":"full"}'))
+$rejected=$false
+try{& $script -PayloadDirectory $core -StageDirectory (Join-Path $work 'bad-full') -Version $coreVersion}catch{$rejected=$_.Exception.Message -match 'modules'}
+if(-not $rejected){throw 'FAIL: full payload accepted without modules'}
+Write-Host 'PASS: verified core permits no modules; full rejects missing modules.'

@@ -271,7 +271,7 @@ int main(int argc,char** argv) {
     run("settings have four sections and persistent notification choices", [&] {
         panel.set_settings(Settings{});panel.show(true,false);
         HWND sections=child(window,227),notifications=child(window,225);
-        check(SendMessageW(sections,CB_GETCOUNT,0,0)==4,"four settings sections");
+        check(SendMessageW(sections,CB_GETCOUNT,0,0)==5,"five settings sections");
         check(SendMessageW(notifications,CB_GETCOUNT,0,0)==3,"three notification modes");
         click(child(window,228));check(exported==1,"explicit diagnostic export callback");
         SendMessageW(notifications,CB_SETCURSEL,1,0);
@@ -279,6 +279,14 @@ int main(int argc,char** argv) {
         SendMessageW(window,WM_COMMAND,MAKEWPARAM(227,CBN_SELCHANGE),reinterpret_cast<LPARAM>(sections));
         check((GetWindowLongPtrW(child(window,AutoUpdate),GWL_STYLE)&WS_VISIBLE)!=0 && (GetWindowLongPtrW(notifications,GWL_STYLE)&WS_VISIBLE)==0,"only update section visible");
         click(child(window,Apply));check(saved_settings.notifications==NotificationMode::Errors,"hidden draft preserved");
+    });
+    run("module actions and busy state", [&] {
+        PanelState state;state.modules={L"AVIF — не установлен"};state.module_detail=L"Загрузка 11 МБ; зависимости: нет";
+        panel.update(state);HWND sections=child(window,227);SendMessageW(sections,CB_SETCURSEL,4,0);
+        SendMessageW(window,WM_COMMAND,MAKEWPARAM(227,CBN_SELCHANGE),reinterpret_cast<LPARAM>(sections));
+        check((GetWindowLongPtrW(child(window,140),GWL_STYLE)&WS_VISIBLE)!=0,"module section visible");
+        check(control_text(child(window,141))==state.module_detail,"module sizes and dependencies visible");
+        state.modules_busy=true;panel.update(state);check(!IsWindowEnabled(child(window,142))&&!IsWindowEnabled(child(window,143)),"busy blocks mutation");
     });
     panel.shutdown();
     check(!panel.handle() && !IsWindow(window), "shutdown destroys native window");

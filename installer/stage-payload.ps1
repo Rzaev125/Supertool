@@ -26,7 +26,7 @@ foreach ($path in @($source,$stage)) {
 if ($stage.StartsWith($source + '\', [StringComparison]::OrdinalIgnoreCase) -or $stage -eq $source) { throw 'Staging must not be inside the payload.' }
 if (Test-Path -LiteralPath $stage) { throw 'Use a new staging directory; existing releases are never overwritten.' }
 if (-not (Test-Path -LiteralPath (Join-Path $source 'ShiftWheel.exe'))) { throw 'Missing ShiftWheel.exe.' }
-if (-not (Test-Path -LiteralPath (Join-Path $source 'modules') -PathType Container)) { throw 'Missing portable modules.' }
+
 if (-not $AllowTestPayload) {
     $releasePath = Join-Path $source 'release.json'
     if (-not (Test-Path -LiteralPath $releasePath)) { throw 'Missing release.json; run scripts/package.ps1 first.' }
@@ -35,6 +35,9 @@ if (-not $AllowTestPayload) {
     if ($release.executable_sha256 -ne (Get-FileHash -LiteralPath (Join-Path $source 'ShiftWheel.exe') -Algorithm SHA256).Hash) { throw 'Payload executable hash does not match release.json.' }
     if ((Get-Item -LiteralPath (Join-Path $source 'ShiftWheel.exe')).VersionInfo.ProductVersion -ne $Version) { throw 'Payload executable product version does not match installer version.' }
 }
+$isCore = -not $AllowTestPayload -and $release.distribution -eq 'core'
+if (-not $isCore -and -not (Test-Path -LiteralPath (Join-Path $source 'modules') -PathType Container)) { throw 'Missing portable modules.' }
+if ($isCore -and (Test-Path -LiteralPath (Join-Path $source 'modules'))) { throw 'Core payload must not contain modules.' }
 $topFiles = @('ShiftWheel.exe','release.json','README.md','START.txt','VERIFICATION.md','modules.md','heic-module.md','presentation-module.md','ocr-module.md','installer.md','hardware-video.md','updates.md','wheel-mp4.png','wheel-xlsx.png','wheel-pdf.png','wheel-avif.png','wheel-webp.png','wheel-wav.png','wheel-heic.png','wheel-pptx.png')
 $files = @(Get-ChildItem -LiteralPath $source -Recurse -File | Where-Object {
     $relative = $_.FullName.Substring($source.Length + 1)

@@ -3,6 +3,7 @@
 #include "webp_converter.h"
 #include "image_converter.h"
 #include "engines.h"
+#include "module_paths.h"
 #include <cstdint>
 #include <cstddef>
 #include <cstring>
@@ -12,7 +13,7 @@
 namespace shiftwheel {
 namespace fs = std::filesystem;
 fs::path heic_module(const wchar_t* filename) {
-    return module_path(Category::Video).parent_path().parent_path() / L"heic" / filename;
+    return module_directory("heic") / filename;
 }
 namespace {
 // Public libheif 1.23.6 C ABI. Loaded only by the short-lived conversion worker.

@@ -1,8 +1,10 @@
 #include "app.h"
+#include "modules.h"
 #include "updates.h"
 #include "update_state.h"
 #include "update_signature.h"
 #include <mutex>
+#include <map>
 #include "diagnostics.h"
 #include "tray_notifications.h"
 #include <shobjidl.h>
@@ -23,11 +25,12 @@ using Microsoft::WRL::ComPtr;
 namespace {
 constexpr UINT wm_tray = WM_APP + 1, wm_trigger = WM_APP + 2, wm_hide = WM_APP + 3, wm_mouse_up = WM_APP + 4;
 constexpr UINT wm_start_next = WM_APP + 5, wm_show_panel = WM_APP + 7, wm_update = WM_APP + 10;
-constexpr UINT wm_next_notification = WM_APP + 11, wm_update_progress = WM_APP + 12;
+constexpr UINT wm_next_notification = WM_APP + 11, wm_update_progress = WM_APP + 12, wm_modules = WM_APP + 13;
 constexpr UINT menu_preview = 1, menu_cancel = 2, menu_open = 3, menu_exit = 4, menu_tasks = 5, menu_settings = 6, menu_update = 7;
 class App {
 public:
     ~App() {
+        module_thread_.request_stop();if(module_thread_.joinable())module_thread_.join();
         update_thread_.request_stop();
         if (update_thread_.joinable()) update_thread_.join();
         if (mouse_) UnhookWindowsHookEx(mouse_);
@@ -73,7 +76,12 @@ public:
         try{update_policy_=load_update_policy(update_policy_path_);}catch(const std::exception& e){startup_notice_=from_utf8(e.what());}
         if(update_failed_){update_policy_.failure(update_now());save_update_policy(update_policy_path_,update_policy_);}
         if(!update_policy_.check_allowed(update_now(),false))update_status_=L"Автоматическая проверка отложена. Ручная проверка доступна.";
+        scan_modules();
         PanelActions actions;
+        actions.change_module=[this](size_t index,bool remove){change_module(index,remove);};
+        actions.select_module=[this](size_t index){selected_module_=index;refresh();};
+        actions.refresh_modules=[this]{scan_modules();refresh();};
+        actions.cancel_module=[this]{module_thread_.request_stop();};
         actions.check_update=[this]{check_updates(true);};
         actions.install_update=[this]{
             if(pending_setup_.empty())throw std::runtime_error("Проверенный установщик ещё не загружен.");
@@ -170,6 +178,7 @@ private:
     }
     void cancel() { if (worker_.busy()) { cancelling_ = true; worker_.cancel(); refresh(); } }
     void start_next(bool new_admission) {
+        if(modules_busy_){refresh();return;}
         if (may_install_update(install_requested_,worker_.busy(),queue_.pending()) && !pending_setup_.empty()) {
             try { launch_update_helper(pending_setup_, executable_, pending_hash_); PostQuitMessage(0); }
             catch (const std::exception& e) { balloon(L"Обновление отложено", from_utf8(e.what()), NIIF_ERROR); pending_setup_.clear();install_requested_=false;update_policy_.failure(update_now());save_update_policy(update_policy_path_,update_policy_);update_status_=L"Установка не началась. Повторная попытка отложена.";refresh(); }
@@ -212,6 +221,16 @@ private:
         persist_queue();
         PanelState state; state.queue_paused = queue_.paused(); state.running = worker_.busy();
         state.recovery_pending=recovery_pending_;
+        state.modules=module_rows_;state.modules_busy=modules_busy_;state.modules_allowed=!worker_.busy()&&queue_.pending()==0;
+        if(selected_module_<module_catalog().size()){
+            auto& m=module_catalog()[selected_module_];auto total=m.bytes;
+            std::wstring dep=L"нет";
+            if(!m.dependency.empty())for(auto& d:module_catalog())if(d.id==m.dependency){dep=d.name;if(!module_status_cache_[m.dependency].installed)total+=d.bytes;}
+            auto mib=[](auto n){return std::to_wstring((n+1024*1024-1)/(1024*1024))+L" МБ";};
+            state.module_detail=m.name+L"\r\nДоступная версия: "+m.version+L"; загрузка: "+mib(m.bytes)+L"; на диске: "+mib(m.unpacked)+L"\r\nЗависимости: "+dep+L". Общая загрузка: "+mib(total)+L".\r\n";
+            {std::lock_guard lock(module_mutex_);state.module_detail+=module_notice_;}
+            if(!state.modules_allowed)state.module_detail+=L"\r\nИзменение модулей доступно после завершения/очистки очереди.";
+        }
         state.update_detail=update_status_;state.update_checking=checking_;state.update_ready=!pending_setup_.empty()&&!install_requested_;
         {std::lock_guard lock(update_mutex_);state.update_available=!available_release_.version.empty()&&newer_version(available_release_.version,app_version);}
         state.headline = queue_.paused() ? L"Очередь приостановлена" : L"Готов к конвертации";
@@ -234,6 +253,39 @@ private:
         for (const auto& job : queue_.items()) if (job.state == JobState::Running || job.state == JobState::Queued) add(job);
         for (auto it = queue_.items().rbegin(); it != queue_.items().rend(); ++it) if (it->state != JobState::Running && it->state != JobState::Queued) add(*it);
         panel_.update(state);
+    }
+    void scan_modules(){
+        module_rows_.clear();
+        for(auto& spec:module_catalog()){
+            try{auto status=module_status(executable_.parent_path(),spec);module_status_cache_[spec.id]=status;module_rows_.push_back(spec.name+L" — "+(status.installed?status.version:L"не установлен"));}
+            catch(...){module_status_cache_[spec.id]={};module_rows_.push_back(spec.name+L" — ошибка; повторите установку");}
+        }
+    }
+    void change_module(size_t index,bool remove){
+        if(modules_busy_||worker_.busy()||queue_.pending()||install_requested_)throw std::runtime_error("Сначала завершите или очистите очередь.");
+        if(index>=module_catalog().size())return;
+        if(module_thread_.joinable())module_thread_.join();
+        auto spec=module_catalog()[index];auto root=executable_.parent_path();
+        // A held lease in a separate CLI must also prevent expensive downloads.
+        {ModuleLease available(root,true);}
+        modules_busy_=true;
+        {std::lock_guard lock(module_mutex_);module_notice_=remove?L"Удаление…":L"Подготовка загрузки…";}
+        module_thread_=std::jthread([this,spec,root,remove](std::stop_token stop){
+            auto notice=[this](std::wstring text){std::lock_guard lock(module_mutex_);module_notice_=std::move(text);PostMessageW(window_,wm_modules,1,0);};
+            try{
+                if(remove)remove_module(root,spec);
+                else {
+                    auto install=[&](const ModuleSpec& item){
+                        ULONGLONG last=0;
+                        install_module(root,item,stop,[&](auto got,auto total){auto now=GetTickCount64();if(now-last<200&&got!=total)return;last=now;notice(item.name+L": загрузка "+std::to_wstring(total?got*100/total:0)+L"%. Затем проверка и распаковка…");});
+                    };
+                    if(!spec.dependency.empty())for(auto& d:module_catalog())if(d.id==spec.dependency&&!module_status(root,d).installed)install(d);
+                    install(spec);
+                }
+                notice(remove?L"Модуль отключён. Неизвестные и старые офлайн-файлы сохранены в modules.":L"Модуль установлен и проверен. Можно конвертировать файлы.");
+            }catch(const std::exception& e){notice(from_utf8(e.what()));}
+            PostMessageW(window_,wm_modules,0,0);
+        });refresh();
     }
     static void reveal(const std::filesystem::path& path) {
         validate_local_path(path,false);
@@ -391,6 +443,9 @@ private:
         case wm_mouse_up:
             if (self->wheel_ && self->wheel_->visible()) SetTimer(hwnd, 1, 250, nullptr);
             return 0;
+        case wm_modules:
+            if(!w){if(self->module_thread_.joinable())self->module_thread_.join();self->modules_busy_=false;self->scan_modules();PostMessageW(hwnd,wm_start_next,0,0);}
+            self->refresh();return 0;
         case wm_update_progress:
             if(static_cast<unsigned>(w)!=self->update_generation_)return 0;
             if(self->checking_&&self->download_total_){
@@ -451,7 +506,13 @@ private:
     std::atomic<unsigned long long> download_got_{0},download_total_{0};
     bool install_requested_=false,update_success_=false;
     std::wstring pending_hash_, update_hash_, update_notice_;
-    std::jthread update_thread_;
+    std::jthread update_thread_,module_thread_;
+    std::mutex module_mutex_;
+    std::wstring module_notice_=L"Установка — по выбранному компоненту. JPEG, PNG, BMP и TIFF доступны без загрузки. Проверка SHA-256 встроена; подпись пакетов пока не подключена.";
+    std::vector<std::wstring> module_rows_;
+    std::map<std::string,ModuleStatus> module_status_cache_;
+    size_t selected_module_=0;
+    bool modules_busy_=false;
     std::atomic<bool> checking_{false};
     bool update_manual_ = false, update_failed_ = false;
     unsigned update_generation_ = 0, update_result_generation_ = 0;
