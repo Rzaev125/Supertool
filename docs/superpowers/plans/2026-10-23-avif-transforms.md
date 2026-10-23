@@ -42,7 +42,7 @@
 
 **Files:** version files, README.md, docs/avif-transforms.md, docs/acceptance-0.13.0.md, docs/review-0.13.0.md, roadmap.
 
-- [ ] Identify the next local build as 0.13.0 consistently; preserve 0.12 out artifacts.
-- [ ] Run full sequential CTest with D-local TEMP/TMP; expected all pass, build without warnings.
-- [ ] Document precise coverage, libavif source references, unsupported cases and local-only release status.
-- [ ] One fresh read-only whole-increment review, one fix pass for confirmed Important/Critical issues, regressions then suite as needed. Record deferred items and commit.
+- [x] Identify the next local build as 0.13.0 consistently; preserve 0.12 out artifacts.
+- [x] Run full sequential CTest with D-local TEMP/TMP; expected all pass, build without warnings.
+- [x] Document precise coverage, libavif source references, unsupported cases and local-only release status.
+- [x] One fresh read-only whole-increment review, one fix pass for confirmed Important/Critical issues, regressions then suite as needed. Record deferred items and commit.
