@@ -7,9 +7,10 @@ namespace fs=std::filesystem;
 void check(bool b,const char* m){if(!b)throw std::runtime_error(m);}
 template<class F> void rejects(F f){bool b=false;try{f();}catch(...){b=true;}check(b,"must reject");}
 int main(int argc,char** argv){try{
+ if(argc!=2)throw std::runtime_error("Run via module_fixtures.ps1 with its fixture directory");
  for(auto s:{"../x","a/../x","/x","C:/x","a:x","a//b","a\\b","a/CON.txt","a./b","a /b","a/aux","a/COM1",".active-id","x\n"}) check(!safe_module_path(s),s);
  check(safe_module_path("program/soffice.com"),"nested path");
- auto root=fs::current_path()/(L"module-test-root-"+std::to_wstring(GetTickCount64()));fs::create_directories(root);
+ auto root=fs::absolute(fs::path(argv[1]))/(L"module-test-root-"+std::to_wstring(GetTickCount64()));fs::create_directories(root);
  auto clean=[&]{fs::remove_all(root);};
  {ModuleLease a(root,false);ModuleLease b(root,false);rejects([&]{ModuleLease c(root,true);});}
  {ModuleLease a(root,true);rejects([&]{ModuleLease b(root,false);});}
@@ -18,15 +19,6 @@ int main(int argc,char** argv){try{
  save_local_state(root/L"modules/.active-ffmpeg","../escape");rejects([&]{module_directory(root,"ffmpeg");});
  save_local_state(root/L"modules/.active-ffmpeg","disabled");check(!fs::exists(module_directory(root,"ffmpeg")/L"ffmpeg.exe"),"disabled");
  fs::remove(root/L"modules/.active-ffmpeg");
- auto fixture=fs::absolute(L"../../cab-spike/test.cab");
- if(!fs::exists(fixture)) fixture=fs::absolute(L"build/cab-spike/test.cab");
- if(fs::exists(fixture)){
-   ModuleSpec spec{"fixture",L"Fixture",L"1.0.0",L"https://example.com/test.cab",file_sha256(fixture),fs::file_size(fixture),9,1,"",{"sub/a.txt"}};
-   auto extract=root/L"extract";fs::create_directory(extract);extract_module_cab(fixture,extract,spec,{});
-   check(fs::file_size(extract/L"sub/a.txt")==9,"real cab extraction");
-   fs::create_directory(root/L"cancel");std::stop_source stop;stop.request_stop();rejects([&]{extract_module_cab(fixture,root/L"cancel",spec,stop.get_token());});
-   spec.bytes++;rejects([&]{verify_module_archive(fixture,spec);});spec.bytes--;spec.sha256[0]=spec.sha256[0]==L'0'?L'1':L'0';rejects([&]{verify_module_archive(fixture,spec);});
- }
  if(argc==2){
   fs::path fixtures=argv[1];auto cab=fixtures/L"good.cab";
   ModuleSpec spec{"ffmpeg",L"Fixture",L"0.9.0",L"https://example.com/module.cab",file_sha256(cab),fs::file_size(cab),7+fs::file_size(fixtures/L"inventory.txt"),2,"",{"sub/file.txt"},file_sha256(fixtures/L"inventory.txt")};
