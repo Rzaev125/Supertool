@@ -1,5 +1,6 @@
 #include "worker.h"
 #include "engines.h"
+#include "job_queue.h"
 #include <objbase.h>
 #include <fstream>
 #include <iostream>
@@ -95,7 +96,27 @@ int wmain(int argc, wchar_t** argv) {
         bool rejected = false;
         try { worker.start(input, Format::Jpeg, window, {}, fs::path(L"relative-output")); } catch (const std::runtime_error&) { rejected = true; }
         check(rejected && !worker.busy(), "relative output directory is rejected before launch");
-        std::cout << "PASS worker snapshot, output directory, progress notifications, handle allowlist and repeated cancellation cleanup\n";
+        const auto first_source = root / L"first", second_source = root / L"second";
+        for (const auto& folder : {first_source, second_source}) {
+            fs::create_directory(folder);
+            { std::ofstream file(folder / L"same.png"); file << "original"; }
+            { std::ofstream gate(folder / L"continue"); gate << "go"; }
+        }
+        JobQueue batch;
+        batch.enqueue_grouped({first_source / L"same.png", second_source / L"same.png"}, Format::Jpeg, {}, destination);
+        const auto group_folder = batch.next()->output_directory;
+        while (auto pending = batch.next()) {
+            const auto job = *pending; batch.start(job.id); done = false;
+            worker.start(job.input, job.format, window, job.options, job.output_directory);
+            until([] { return done; }, "batch worker did not finish");
+            const auto batch_result = worker.finish();
+            check(batch_result.success && batch_result.output.parent_path() == group_folder, "every batch result must be published inside shared folder");
+            batch.complete(job.id, JobState::Succeeded, batch_result.output, L"ready");
+        }
+        check(fs::is_regular_file(group_folder / L"same.jpg") && fs::is_regular_file(group_folder / L"same (1).jpg"), "same input names must produce two distinct batch results");
+        check(std::distance(fs::directory_iterator(group_folder), fs::directory_iterator{}) == 2, "batch folder must contain only the two finished results");
+        check(!fs::exists(first_source / L"same.jpg") && !fs::exists(second_source / L"same.jpg"), "batch output must not spill beside sources");
+        std::cout << "PASS worker snapshot, output directory, progress notifications, handle allowlist, cancellation and grouped batch output\n";
     } catch (const std::exception& error) { std::cerr << "FAIL " << error.what() << " (progress=" << worker.progress().percent << ", notice=" << progress_notice << ", done=" << done << ")\n"; result = 1; }
     worker.shutdown();
     if (secret.value != INVALID_HANDLE_VALUE) { CloseHandle(secret.value); secret.value = INVALID_HANDLE_VALUE; }

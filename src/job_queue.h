@@ -34,6 +34,9 @@ inline bool notify_batch(NotificationMode mode, const BatchOutcome& batch) {
 }
 class JobQueue {
 public:
+    // A multi-file drop shares one new result folder; single-file jobs keep their destination.
+    void enqueue_grouped(const std::vector<std::filesystem::path>& files, Format format,
+                         const ConversionOptions& options, const std::filesystem::path& output_directory);
     void enqueue(const std::vector<std::filesystem::path>& files, Format format,
                  const ConversionOptions& options, const std::filesystem::path& output_directory) {
         validate_options(options);

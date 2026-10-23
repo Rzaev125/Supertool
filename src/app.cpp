@@ -177,7 +177,7 @@ private:
     void enqueue(const std::vector<std::filesystem::path>& files, Format format) {
         try {
             for (const auto& input : files) if (!supported_local_file(input)) throw std::runtime_error("Один из исходных файлов недоступен.");
-            queue_.enqueue(files, format, settings_.conversion, settings_.output_directory);
+            queue_.enqueue_grouped(files, format, settings_.conversion, settings_.output_directory);
             queue_.capture_inputs();
             diagnostic_->append("conversion-queued",queue_.items().back().id);
             PostMessageW(window_, wm_start_next, 1, 0);
