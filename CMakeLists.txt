@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(ShiftWheel VERSION 0.10.0 LANGUAGES CXX RC)
+project(ShiftWheel VERSION 0.11.0 LANGUAGES CXX RC)
 set(SHIFTWHEEL_UPDATE_PUBLIC_KEY "" CACHE STRING "Pinned P-256 BCRYPT public blob (144 hex characters)")
 set(SHIFTWHEEL_UPDATE_KEY_ID "" CACHE STRING "Pinned update signing key identifier")
 if(NOT SHIFTWHEEL_UPDATE_PUBLIC_KEY STREQUAL "")

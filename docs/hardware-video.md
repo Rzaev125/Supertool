@@ -1,5 +1,7 @@
 # Hardware H.264 encoding
 
+HEVC/AV1 support was added in 0.11: see [video-codecs.md](video-codecs.md) for container choices, same-codec fallback and current validation. The H.264 behavior and historical measurements below remain applicable to that codec.
+
 ShiftWheel 0.5.0 can encode MP4, MKV and MOV video using NVIDIA NVENC,
 Intel Quick Sync Video (QSV), or AMD AMF. The automatic setting is the
 default for new settings and older INI files without the new key:

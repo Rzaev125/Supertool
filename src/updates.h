@@ -6,7 +6,7 @@
 #include <functional>
 #include <ostream>
 namespace shiftwheel {
-inline constexpr wchar_t app_version[] = L"0.10.0";
+inline constexpr wchar_t app_version[] = L"0.11.0";
 struct UpdateRelease { std::wstring version, url, sha256; unsigned long long size = 0; std::wstring notes; };
 bool https_url(const std::wstring& url);
 bool newer_version(const std::wstring& candidate, const std::wstring& current);
