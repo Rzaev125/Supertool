@@ -431,16 +431,18 @@ struct ControlPanel::Impl {
         set_text(main_control(Headline), state.headline.empty() ? L"Готово к работе" : state.headline);
         set_text(main_control(Summary), state.detail);
         set_text(setting(UpdateInfo),state.update_detail.empty()?L"Проверка обновлений ещё не выполнялась.":state.update_detail);
-        EnableWindow(setting(CheckUpdate),!state.update_checking&&static_cast<bool>(actions.check_update));
-        EnableWindow(setting(InstallUpdate),state.update_ready&&!state.update_checking&&static_cast<bool>(actions.install_update));
-        EnableWindow(setting(LaterUpdate),state.update_available&&static_cast<bool>(actions.later_update));
+        EnableWindow(setting(AutoUpdate),state.online_updates_allowed);
+        EnableWindow(setting(UpdateChannel),state.online_updates_allowed);
+        EnableWindow(setting(CheckUpdate),state.online_updates_allowed&&!state.update_checking&&static_cast<bool>(actions.check_update));
+        EnableWindow(setting(InstallUpdate),state.online_updates_allowed&&state.update_ready&&!state.update_checking&&static_cast<bool>(actions.install_update));
+        EnableWindow(setting(LaterUpdate),state.online_updates_allowed&&state.update_available&&static_cast<bool>(actions.later_update));
         if(state.modules!=previous.modules){
             auto module_selection=SendMessageW(setting(Modules),CB_GETCURSEL,0,0);SendMessageW(setting(Modules),CB_RESETCONTENT,0,0);
             for(auto& row:state.modules)SendMessageW(setting(Modules),CB_ADDSTRING,0,reinterpret_cast<LPARAM>(row.c_str()));
             SendMessageW(setting(Modules),CB_SETCURSEL,module_selection<0?0:module_selection,0);
         }
         set_text(setting(ModuleInfo),state.module_detail);
-        EnableWindow(setting(InstallModule),state.modules_allowed&&!state.modules_busy&&static_cast<bool>(actions.change_module));
+        EnableWindow(setting(InstallModule),state.module_downloads_allowed&&state.modules_allowed&&!state.modules_busy&&static_cast<bool>(actions.change_module));
         EnableWindow(setting(RemoveModule),state.modules_allowed&&!state.modules_busy&&static_cast<bool>(actions.change_module));
         EnableWindow(setting(CancelModule),state.modules_busy&&static_cast<bool>(actions.cancel_module));
         EnableWindow(setting(RefreshModules),!state.modules_busy&&static_cast<bool>(actions.refresh_modules));

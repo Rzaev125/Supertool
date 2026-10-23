@@ -160,5 +160,10 @@ foreach ($leaf in @('installer-history',($name + '.sha256'),($name + '.payload.j
     clean_workspaces(root)
     assert (payload / 'ShiftWheel.exe').is_file()
     print('PASS: staging/hash errors clean their temporary trees and preserve inputs', flush=True)
+    (root / 'tools/installer-downloads/innosetup-6.7.3.exe').unlink()
+    os.environ['SHIFTWHEEL_OFFLINE'] = '1'
+    check_result(run(script, *args), False, b'Offline check: missing pinned installer tool')
+    clean_workspaces(root)
+    print('PASS: offline checks fail clearly on a cache miss without downloading', flush=True)
 
 print('PASS: installer temporary-file lifecycle')

@@ -1,4 +1,5 @@
 #include "app.h"
+#include "build_mode.h"
 #include "resource.h"
 #include "modules.h"
 #include "updates.h"
@@ -54,7 +55,7 @@ public:
         executable.resize(length); settings_path_ = std::filesystem::path(executable).parent_path() / L"ShiftWheel.ini";
         try { settings_ = load_settings(settings_path_); }
         catch (const std::exception& error) { startup_notice_ = L"Настройки не загружены: " + from_utf8(error.what()); }
-        if(update_signature_configured()&&settings_.update_channel==L"https://raw.githubusercontent.com/Rzaev125/Supertool/main/updates/stable.txt")settings_.update_channel=L"https://raw.githubusercontent.com/Rzaev125/Supertool/main/updates/stable-signed.txt";
+        if(!local_development_build&&update_signature_configured()&&settings_.update_channel==L"https://raw.githubusercontent.com/Rzaev125/Supertool/main/updates/stable.txt")settings_.update_channel=L"https://raw.githubusercontent.com/Rzaev125/Supertool/main/updates/stable-signed.txt";
         diagnostic_ = std::make_unique<DiagnosticLog>(settings_path_.parent_path()/L"ShiftWheel.diagnostics.log");
         diagnostic_->append("session-start");
         queue_path_=settings_path_.parent_path()/L"ShiftWheel.queue";
@@ -85,6 +86,7 @@ public:
         try{update_policy_=load_update_policy(update_policy_path_);}catch(const std::exception& e){startup_notice_=from_utf8(e.what());}
         if(update_failed_){update_policy_.failure(update_now());save_update_policy(update_policy_path_,update_policy_);}
         if(!update_policy_.check_allowed(update_now(),false))update_status_=L"Автоматическая проверка отложена. Ручная проверка доступна.";
+        if(local_development_build)update_status_=local_update_notice;
         scan_modules();
         PanelActions actions;
         actions.change_module=[this](size_t index,bool remove){change_module(index,remove);};
@@ -243,6 +245,7 @@ private:
     void refresh() {
         persist_queue();
         PanelState state; state.queue_paused = queue_.paused(); state.running = worker_.busy();
+        state.online_updates_allowed=!local_development_build;state.module_downloads_allowed=!local_development_build;
         state.recovery_pending=recovery_pending_;
         state.modules=module_rows_;state.modules_busy=modules_busy_;state.modules_allowed=!worker_.busy()&&queue_.pending()==0;
         if(selected_module_<module_catalog().size()){
@@ -254,7 +257,8 @@ private:
             {std::lock_guard lock(module_mutex_);state.module_detail+=module_notice_;}
             if(!state.modules_allowed)state.module_detail+=L"\r\nИзменение модулей доступно после завершения/очистки очереди.";
         }
-        state.update_detail=update_status_;state.update_checking=checking_;state.update_ready=!pending_setup_.empty()&&!install_requested_;
+        if(local_development_build)state.module_detail+=L"\r\nАвтозагрузка модулей отключена в локальной сборке.";
+        state.update_detail=local_development_build?local_update_notice:update_status_;state.update_checking=checking_;state.update_ready=!pending_setup_.empty()&&!install_requested_;
         {std::lock_guard lock(update_mutex_);state.update_available=!available_release_.version.empty()&&newer_version(available_release_.version,app_version);}
         state.headline = queue_.paused() ? L"Очередь приостановлена" : L"Готов к конвертации";
         state.detail = startup_notice_.empty() ? L"Перетащите файлы и удерживайте Shift. В очереди: " + std::to_wstring(queue_.pending()) : startup_notice_;
@@ -285,6 +289,7 @@ private:
         }
     }
     void change_module(size_t index,bool remove){
+        if(local_development_build&&!remove)throw std::runtime_error("Автозагрузка модулей отключена в локальной сборке. Используйте локальные проверенные CAB по инструкции разработки.");
         if(modules_busy_||worker_.busy()||queue_.pending()||install_requested_)throw std::runtime_error("Сначала завершите или очистите очередь.");
         if(index>=module_catalog().size())return;
         if(module_thread_.joinable())module_thread_.join();
@@ -358,6 +363,7 @@ private:
         }
     }
     void check_updates(bool manual) {
+        if(local_development_build){update_status_=local_update_notice;if(manual)refresh();return;}
         if(checking_)return;
         if(!pending_setup_.empty()){update_status_=L"Обновление загружено. Выберите «Установить сейчас» или «Позже».";refresh();return;}
         if(settings_.update_channel.empty()){if(manual){update_status_=L"Задайте HTTPS-канал и сохраните настройки.";refresh();}return;}

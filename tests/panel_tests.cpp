@@ -443,6 +443,20 @@ int main(int argc,char** argv) {
         click(child(window,142));click(child(window,144));check(module_installed==1&&module_cancelled==1,"busy only permits cancellation");
         state.modules_busy=false;state.modules_allowed=false;panel.update(state);check(!IsWindowEnabled(child(window,142))&&!IsWindowEnabled(child(window,143)),"queue blocks module mutation");
     });
+    run("local build policy disables online controls without changing saved preferences", [&] {
+        Settings preferences;preferences.automatic_updates=true;preferences.update_channel=L"https://example.com/custom.txt";
+        panel.set_settings(preferences);
+        PanelState state;state.online_updates_allowed=false;state.module_downloads_allowed=false;
+        state.modules={L"AVIF"};state.update_detail=L"Локальная сборка: обновления отключены.";
+        panel.update(state);
+        check(!IsWindowEnabled(child(window,AutoUpdate))&&!IsWindowEnabled(child(window,UpdateChannel)),"local updates are visibly disabled");
+        check(!IsWindowEnabled(child(window,131))&&!IsWindowEnabled(child(window,132)),"local check/install actions disabled");
+        check(!IsWindowEnabled(child(window,142))&&IsWindowEnabled(child(window,143)),"online module install disabled, removal retained");
+        click(child(window,Apply));
+        check(saved_settings.automatic_updates&&saved_settings.update_channel==preferences.update_channel,"disabled controls preserve preferences");
+        state.online_updates_allowed=true;state.module_downloads_allowed=true;panel.update(state);
+        check(IsWindowEnabled(child(window,AutoUpdate))&&IsWindowEnabled(child(window,131))&&IsWindowEnabled(child(window,142)),"release policy restores actions");
+    });
     panel.shutdown();
     check(!panel.handle() && !IsWindow(window), "shutdown destroys native window");
     DestroyWindow(host);

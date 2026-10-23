@@ -24,6 +24,9 @@ int main(int argc,char** argv){try{
   fs::path fixtures=argv[1];auto cab=fixtures/L"good.cab";
   ModuleSpec spec{"ffmpeg",L"Fixture",L"0.9.0",L"https://example.com/module.cab",file_sha256(cab),fs::file_size(cab),7+fs::file_size(fixtures/L"inventory.txt"),2,"",{"sub/file.txt"},file_sha256(fixtures/L"inventory.txt")};
   auto copy=[&](const auto&,auto,std::ostream& out,std::stop_token){std::ifstream in(cab,std::ios::binary);out<<in.rdbuf();};
+  auto bootstrap_stage=root/L"developer-extraction";fs::create_directories(bootstrap_stage);
+  extract_module_cab(cab,bootstrap_stage,spec,{},false);
+  check(file_sha256(bootstrap_stage/L"sub/file.txt")==file_sha256(fixtures/L"file.txt"),"developer extraction preserves pinned bytes");
   install_module(root,spec,{}, {},copy);check(module_status(root,spec).version==L"0.9.0","installed version");
   save_local_state(root/L"modules/.active-ffmpeg","../corrupt");
   install_module(root,spec,{}, {},copy);check(module_status(root,spec).installed,"repair corrupt pointer");

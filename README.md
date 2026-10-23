@@ -11,16 +11,17 @@
 Задания выполняются по очереди. Результат сохраняется рядом с оригиналом или
 в выбранной папке. В окне «Задачи» доступны прогресс, история и управление очередью.
 
-[Стабильный выпуск 0.7.0](https://github.com/Rzaev125/Supertool/releases/tag/v0.7.0).
+Сейчас проект разрабатывается локально; опубликованных выпусков на GitHub нет.
 
-**Запуск:** откройте `ShiftWheel.exe` из базовой (`core`) или полной (`full`) сборки.
-Базовая сборка конвертирует JPEG/PNG/BMP/TIFF без загрузок; остальные компоненты
-устанавливаются явно через **Настройки → Модули**. Полная сборка содержит все движки.
-[Модули, размеры и установка](docs/modules-0.9.md). Microsoft Office, Python, .NET
+**Запуск:** откройте `build/Release/ShiftWheel.exe` после сборки и подготовки модулей.
+Базовые JPEG/PNG/BMP/TIFF работают без дополнительных движков; остальные форматы
+используют локальный комплект модулей рядом с EXE. В локальной сборке сетевое
+обновление приложения и загрузка модулей отключены без сброса сохранённых настроек.
+[Подготовка и проверка без старых релизов](docs/local-development.md). Microsoft Office, Python, .NET
 и права администратора для запуска не нужны. Windows 10/11 x64.
 
-Также доступен установщик `ShiftWheel-0.7.0-win-x64-setup.exe`: установка для текущего
-пользователя, полный комплект движков без загрузок во время установки, ярлык
+Шаблоны Core/Full позволяют собрать локальные установщики: установка для текущего
+пользователя, выбранный комплект движков без загрузок во время установки, ярлык
 в меню «Пуск» и необязательный ярлык на рабочем столе. Перед установкой,
 обновлением или удалением закройте ShiftWheel через «Выход» в трее.
 Установщик сохраняет персональный `ShiftWheel.ini`. Подробности:
@@ -28,9 +29,10 @@
 
 ## Обновления и автозапуск
 
-В настройках можно включить запуск вместе с Windows и автоматические обновления.
-Установленная копия обновляется при пустой очереди; переносимая сообщает о новой версии.
-Первая установка 0.7.0 выполняется вручную. [Подробности](docs/updates.md).
+Запуск вместе с Windows доступен в настройках. Локальная сборка явно показывает,
+что онлайн-обновления отключены; существующие предпочтения канала сохраняются.
+Механизм подписанных обновлений сохранён для будущих выпусков, но публичный канал
+сейчас не переключается. [Разработка](docs/local-development.md), [механизм обновлений](docs/updates.md).
 
 В 0.10 исправлена очистка временного CAB; добавлены GIF и анимированный WebP с кадрами, задержками и повторениями. [Подробности и ограничения](docs/animated-images.md).
 
@@ -296,10 +298,9 @@ JPG/BMP получают белый фон; PNG, AVIF, WebP, TIFF и HEIC
 Сложная вёрстка Office, шрифты и совместимость формул могут отличаться от
 Microsoft Office. Макросы отключены, пользовательский профиль Office не меняется.
 
-Локальная 0.15 добавляет [EXIF-повороты HEIC и выбранные метаданные фото](docs/photo-metadata.md). Локальная 0.14 добавляет [HDR-фото → SDR](docs/hdr-images.md) и независимую проверку цвета/прозрачности после уменьшения. 0.13 добавляет [преобразования контейнера AVIF](docs/avif-transforms.md) поверх [EXIF-ориентации и выбора даты съёмки 0.12](docs/image-orientation.md); опубликованный preview 0.11 остаётся доступным без изменений.
+Локальная 0.15 добавляет [EXIF-повороты HEIC и выбранные метаданные фото](docs/photo-metadata.md). Локальная 0.14 добавляет [HDR-фото → SDR](docs/hdr-images.md) и независимую проверку цвета/прозрачности после уменьшения. 0.13 добавляет [преобразования контейнера AVIF](docs/avif-transforms.md) поверх [EXIF-ориентации и выбора даты съёмки 0.12](docs/image-orientation.md).
 
-Следующие этапы: дополнительные поля и форматы метаданных, HDR gain map и HDR-экспорт, дополнительные
-аппаратные кодеки/фильтры и цифровая подпись обновлений.
+Дальнейшие этапы и ограничения проверки описаны в [локальном плане улучшений](docs/superpowers/plans/2026-10-24-next-improvements.md). Подпись манифеста обновлений уже реализована; Authenticode для приложения и установщиков требует сертификата владельца.
 
 ## Сборка и проверки
 
@@ -309,31 +310,37 @@ Microsoft Office. Макросы отключены, пользовательс�
 Нужны Visual Studio 2022 C++ Build Tools, Windows SDK и CMake:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build.ps1 -Test
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build.ps1
 ```
 
 Скрипт находит CMake в PATH или стандартной установке BuildTools/Community.
 Сборка последовательная, без повторного использования узлов MSBuild; CRT
 приложения статическая. Движки и их лицензии описаны в `docs/modules.md`.
-Для работы из build скопируйте `tools/modules` в `build/Release/modules`.
+Для первого восстановления модулей используйте локальные закреплённые CAB:
+
+```powershell
+python scripts/ci-bootstrap.py
+```
+
+Нужен собранный `module_unpack.exe` и сохранённый `out/module-assets`. Загрузок
+из удалённых релизов нет; исправный комплект используется повторно. Для нового
+пустого runtime скопируйте `tools/modules` в `build/Release/modules` при закрытом
+приложении. Существующий рабочий runtime эта команда подготовки не изменяет.
 
 Проверки реальных конвертаций используют Python **только как тестовый инструмент**
 с reportlab, pypdf, python-docx, python-pptx, xlsxwriter и Pillow:
 
 ```powershell
-cd build
-foreach ($group in @('pdf','office','media','avif','formats')) {
-    python ..\tests\conversion_tests.py --exe .\Release\ShiftWheel.exe --group $group
-}
-python ..\tests\preset_tests.py --exe .\Release\ShiftWheel.exe
-python ..\tests\heic_tests.py --exe .\Release\ShiftWheel.exe
-python ..\tests\presentation_tests.py --exe .\Release\ShiftWheel.exe
-python ..\tests\ocr_tests.py --exe .\Release\ShiftWheel.exe
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-local.ps1 -Suite Smoke
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-local.ps1 -Suite Conversions
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-local.ps1 -Suite Full
 ```
 
+Успешные фикстуры удаляются; при ошибке остаётся отдельная диагностическая папка.
+Отчёт: `build/local-check/report.json`. [Предпросмотр и безопасная очистка](docs/local-development.md).
 Чтобы включить реальные конвертации и проверки пресетов в CTest, задайте при конфигурации CMake
 `-DSHIFTWHEEL_TEST_PYTHON=C:/полный/путь/python.exe`. Тест junction может требовать
-оболочки вне песочницы; создаваемая ссылка остаётся внутри `build/test-output`.
+оболочки вне песочницы; создаваемая ссылка остаётся внутри отдельной тестовой папки в `build`.
 
 ```powershell
 # Открыть задачи или настройки (в том числе уже запущенного приложения)

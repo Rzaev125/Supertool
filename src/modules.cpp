@@ -18,7 +18,7 @@ void stopped(std::stop_token stop){if(stop.stop_requested())throw std::runtime_e
 std::string narrow(const std::wstring& s){std::string out;for(auto c:s){if(c>127)bad();out+=static_cast<char>(c);}return out;}
 std::wstring wide(const std::string& s){return {s.begin(),s.end()};}
 std::string unique(){GUID g{};if(FAILED(CoCreateGuid(&g)))bad();wchar_t b[40]{};StringFromGUID2(g,b,40);std::wstring v(b+1,36);CharLowerBuffW(v.data(),36);return "pkg-"+narrow(v);}
-struct Extraction {fs::path cab,root;const ModuleSpec* spec;std::stop_token stop;std::set<std::string> names;std::set<HANDLE> files;unsigned long long bytes=0,written=0;bool failed=false;};
+struct Extraction {fs::path cab,root;const ModuleSpec* spec;std::stop_token stop;std::set<std::string> names;std::set<HANDLE> files;unsigned long long bytes=0,written=0;bool failed=false,durable_files=true;};
 thread_local Extraction* context=nullptr;
 void* DIAMONDAPI alloc(ULONG n){return std::malloc(n);}
 void DIAMONDAPI release(void* p){std::free(p);}
@@ -39,7 +39,7 @@ INT_PTR DIAMONDAPI notify(FDINOTIFICATIONTYPE type,PFDINOTIFICATION n){
    c.bytes+=static_cast<unsigned long long>(n->cb);auto p=c.root/fs::path(name);validate_local_path(p,false);fs::create_directories(p.parent_path());validate_local_path(p,false);
    auto h=CreateFileW(p.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL|FILE_FLAG_OPEN_REPARSE_POINT,nullptr);if(h==INVALID_HANDLE_VALUE)bad();c.files.insert(h);return reinterpret_cast<INT_PTR>(h);
   }
-  if(type==fdintCLOSE_FILE_INFO){auto h=reinterpret_cast<HANDLE>(n->hf);if(!c.files.contains(h))bad();const bool ok=FlushFileBuffers(h)!=FALSE;c.files.erase(h);CloseHandle(h);return ok?TRUE:FALSE;}
+  if(type==fdintCLOSE_FILE_INFO){auto h=reinterpret_cast<HANDLE>(n->hf);if(!c.files.contains(h))bad();const bool ok=!c.durable_files||FlushFileBuffers(h)!=FALSE;c.files.erase(h);const bool closed=CloseHandle(h)!=FALSE;return ok&&closed?TRUE:FALSE;}
   return 0;
  }catch(...){c.failed=true;return -1;}
 }
@@ -95,9 +95,9 @@ ModuleStatus module_status(const fs::path& app,const ModuleSpec& spec){
  if(result.version.empty())result.version=L"версия неизвестна (офлайн)";return result;
 }
 void verify_module_archive(const fs::path& cab,const ModuleSpec& s){validate_local_path(cab,false);if(!fs::is_regular_file(cab)||fs::file_size(cab)!=s.bytes||file_sha256(cab)!=s.sha256)bad();}
-void extract_module_cab(const fs::path& cab,const fs::path& fresh,const ModuleSpec& s,std::stop_token stop){
+void extract_module_cab(const fs::path& cab,const fs::path& fresh,const ModuleSpec& s,std::stop_token stop,bool durable_files){
  stopped(stop);verify_module_archive(cab,s);validate_local_path(fresh,false);if(!fs::is_directory(fresh)||!fs::is_empty(fresh))bad();
- Extraction c{cab,fresh,&s,stop};context=&c;ERF error{};auto f=FDICreate(alloc,release,open_cab,read_cab,write_file,close_file,seek_file,cpuUNKNOWN,&error);
+ Extraction c{cab,fresh,&s,stop};c.durable_files=durable_files;context=&c;ERF error{};auto f=FDICreate(alloc,release,open_cab,read_cab,write_file,close_file,seek_file,cpuUNKNOWN,&error);
  if(!f){context=nullptr;bad();}char name[]="module.cab",path[]="";BOOL ok=FDICopy(f,name,path,0,notify,nullptr,&c);FDIDestroy(f);
  for(auto h:c.files)CloseHandle(h);context=nullptr;stopped(stop);
  if(!ok||c.failed||c.names.size()!=s.count||c.bytes!=s.unpacked||c.written!=s.unpacked)bad();

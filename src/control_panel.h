@@ -21,6 +21,7 @@ struct PanelState {
     bool recovery_pending = false;
     std::wstring update_detail;
     bool update_checking=false,update_ready=false,update_available=false;
+    bool online_updates_allowed=true, module_downloads_allowed=true;
     std::vector<std::wstring> modules;
     std::wstring module_detail;
     bool modules_busy=false,modules_allowed=true;

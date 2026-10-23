@@ -1,4 +1,4 @@
-param([ValidateSet('Debug','Release')][string]$Configuration = 'Release', [switch]$Test)
+param([ValidateSet('Debug','Release')][string]$Configuration = 'Release', [switch]$Test, [ValidatePattern('^[A-Za-z0-9_-]*$')][string]$Target='')
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $cmakeCommand = Get-Command cmake -ErrorAction SilentlyContinue
@@ -13,10 +13,11 @@ if (-not $cmakeExe) { throw 'Install Visual Studio 2022 C++ Build Tools with Win
 $buildDirectory = Join-Path $projectRoot 'build'
 & $cmakeExe -S $projectRoot -B $buildDirectory -G 'Visual Studio 17 2022' -A x64
 if ($LASTEXITCODE -ne 0) { throw 'CMake configuration failed.' }
-& $cmakeExe --build $buildDirectory --config $Configuration --parallel 1 -- /nodeReuse:false
+$buildArgs=@('--build',$buildDirectory,'--config',$Configuration)
+if ($Target) { $buildArgs+=@('--target',$Target) }
+$buildArgs+=@('--parallel','1','--','/nodeReuse:false')
+& $cmakeExe @buildArgs
 if ($LASTEXITCODE -ne 0) { throw 'Build failed.' }
 if ($Test) {
-    $ctestExe = Join-Path (Split-Path -Parent $cmakeExe) 'ctest.exe'
-    & $ctestExe --test-dir $buildDirectory -C $Configuration --output-on-failure
-    if ($LASTEXITCODE -ne 0) { throw 'Tests failed.' }
+    & (Join-Path $PSScriptRoot 'check-local.ps1') -Suite Full -Configuration $Configuration -BuildDirectory $buildDirectory
 }

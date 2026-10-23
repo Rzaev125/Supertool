@@ -1,5 +1,5 @@
 """Build immutable CAB assets and compiled SHA-256 pins. Python is build-time only."""
-import argparse, hashlib, json, pathlib, subprocess, urllib.request, os
+import argparse, hashlib, json, pathlib, subprocess, os
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SPECS = [
     ('ffmpeg','Видео, аудио, WebP','', ['ffmpeg.exe','ffprobe.exe']),
@@ -34,19 +34,7 @@ def main():
             expected=next(r for r in trusted if r['id']==ident)
             if expected['version']!=version or expected['inventory_sha256']!=sha(inv): raise ValueError('Source inventory differs from committed pins: '+ident)
             if not cab.exists():
-                partial=work/f'{ident}-{os.getpid()}.partial'
-                try:
-                    size=0
-                    with urllib.request.urlopen(expected['url'],timeout=30) as response, partial.open('xb') as f:
-                        if not response.url.startswith('https://'):raise ValueError('HTTPS required')
-                        for block in iter(lambda:response.read(1048576),b''):
-                            size+=len(block)
-                            if size>expected['bytes']:raise ValueError('Oversize CAB')
-                            f.write(block)
-                    if size!=expected['bytes'] or sha(partial)!=expected['sha256']:raise ValueError('CAB pin mismatch')
-                    partial.replace(cab)
-                finally:
-                    if partial.exists():partial.unlink()
+                raise ValueError('Missing local CAB: '+str(cab)+'. Restore the pinned archive from your local backup; no download was attempted.')
             if cab.stat().st_size!=expected['bytes'] or sha(cab)!=expected['sha256']:raise ValueError('CAB pin mismatch: '+ident)
         elif not cab.exists() or not cache.exists() or cache.read_text()!=fingerprint:
             ddf=work/f'{ident}.ddf'

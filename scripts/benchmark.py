@@ -1,5 +1,5 @@
-"""Reproducible local 0.6 comparison. Development dependencies only; no timing assertions."""
-import hashlib,json,pathlib,statistics,subprocess,zipfile
+"""Measure the current local build; a second local EXE is an optional baseline."""
+import argparse,hashlib,json,pathlib,statistics,subprocess,tempfile
 from PIL import Image,ImageDraw
 from docx import Document
 from reportlab.pdfgen import canvas
@@ -11,15 +11,8 @@ def sha(p):
   for b in iter(lambda:f.read(1048576),b''):h.update(b)
  return h.hexdigest()
 def run(args):return subprocess.run([str(a) for a in args],check=True,capture_output=True,creationflags=subprocess.CREATE_NO_WINDOW)
-def main():
- work=ROOT/'build/benchmark09';work.mkdir(exist_ok=True)
- archive=ROOT/'out/ShiftWheel-0.6.0-win-x64.zip'
- if sha(archive)!='3b64710afc952b6c04d30f27b49a98af931925a93c6ad184fc9165300256a340':raise ValueError('baseline ZIP hash')
- baseline=ROOT/'build/Release/ShiftWheel-baseline-0.6.exe'
- with zipfile.ZipFile(archive) as z:
-  name=next(n for n in z.namelist() if n.endswith('/ShiftWheel.exe'));baseline.write_bytes(z.read(name))
- if sha(baseline)!='4eb79ba353f5cafbbe05007f37a471391a10427b6e677e44f0b810fb163fd390':raise ValueError('baseline EXE hash')
- exe=ROOT/'build/Release/ShiftWheel.exe';runner=ROOT/'build/Release/benchmark_runner.exe'
+def execute(work,exe,baseline,iterations):
+ runner=ROOT/'build/Release/benchmark_runner.exe'
  ffmpeg=ROOT/'tools/modules/ffmpeg/ffmpeg.exe'
  options=work/'options.txt';options.write_text('version=1\nquality=balanced\nresources=balanced\nvideo_acceleration=cpu\npdf_ocr=1\nocr_languages=eng\n',encoding='ascii')
  image=Image.new('RGB',(1600,1000),'#c9e3ef');draw=ImageDraw.Draw(image)
@@ -36,22 +29,33 @@ def main():
  originals={name:sha(work/name) for name,_ in cases};rows=[]
  for index,(name,extension) in enumerate(cases):
   outputs={}
-  for iteration in range(3):
-   order=[('0.6.0',baseline),('0.9.0',exe)]
+  for iteration in range(iterations):
+   order=([('baseline',baseline)] if baseline else [])+[('current',exe)]
    if iteration%2:order.reverse()
    for version,program in order:
     tag=f'{index}-{version}-{iteration}';output=work/f'{tag}.{extension}';temp=work/f'{tag}.tmp'
     if output.exists():output.unlink()
     result=run([runner,program,'--convert',work/name,output,temp,'--options',options]);metrics=json.loads(result.stdout)
     metrics.update(case=name,version=version,iteration=iteration,output_bytes=output.stat().st_size,output_sha256=sha(output))
+    assert not temp.exists(),'temporary conversion output left behind'
     rows.append(metrics);outputs.setdefault(version,[]).append(output)
-  a,b=outputs['0.6.0'][0],outputs['0.9.0'][0]
-  if extension=='pdf':
-   ra,rb=PdfReader(a),PdfReader(b);assert len(ra.pages)==len(rb.pages) and [p.extract_text() for p in ra.pages]==[p.extract_text() for p in rb.pages]
-  else:assert a.read_bytes()==b.read_bytes(),f'output changed: {name}'
+  if baseline:
+   a,b=outputs['baseline'][0],outputs['current'][0]
+   if extension=='pdf':
+    ra,rb=PdfReader(a),PdfReader(b);assert len(ra.pages)==len(rb.pages) and [p.extract_text() for p in ra.pages]==[p.extract_text() for p in rb.pages]
+   else:assert a.read_bytes()==b.read_bytes(),f'output changed: {name}'
   assert originals[name]==sha(work/name),'source changed'
   print(name,'verified',flush=True)
- (work/'results.json').write_text(json.dumps(dict(environment='Windows x64; same engine files; CPU video; balanced two threads; 3 alternating iterations; cache warm, short fixtures',inputs=originals,rows=rows),indent=2)+'\n')
+ (ROOT/'build/benchmark-results.json').write_text(json.dumps(dict(environment='Windows x64; CPU video; balanced two threads; synthetic short fixtures; no performance guarantees',iterations=iterations,executables={k:str(v) for k,v in ([('baseline',baseline)] if baseline else [])+[('current',exe)]},inputs=originals,rows=rows),indent=2)+'\n')
  for name,_ in cases:
-  print(name,[(version,round(statistics.median(r['wall_ms'] for r in rows if r['case']==name and r['version']==version),1)) for version in ['0.6.0','0.9.0']],flush=True)
+  print(name,[(version,round(statistics.median(r['wall_ms'] for r in rows if r['case']==name and r['version']==version),1)) for version in (['baseline'] if baseline else [])+['current']],flush=True)
+
+def main():
+ parser=argparse.ArgumentParser(description=__doc__)
+ parser.add_argument('--exe',type=pathlib.Path,default=ROOT/'build/Release/ShiftWheel.exe')
+ parser.add_argument('--baseline',type=pathlib.Path,help='Optional local EXE; must have its own matching modules beside it.')
+ parser.add_argument('--iterations',type=int,choices=range(1,11),default=3)
+ args=parser.parse_args()
+ with tempfile.TemporaryDirectory(prefix='benchmark-',dir=ROOT/'build') as directory:
+  execute(pathlib.Path(directory),args.exe.resolve(),args.baseline.resolve() if args.baseline else None,args.iterations)
 if __name__=='__main__':main()

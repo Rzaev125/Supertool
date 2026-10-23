@@ -16,7 +16,10 @@ try {
     foreach ($entry in $manifest) {
         if ($entry.filename -notmatch '^[a-z0-9.-]+\.(exe|zip)$') { throw 'Unsafe installer tool filename.' }
         $archive = Join-Path $cache $entry.filename
-        if (-not (Test-Path -LiteralPath $archive)) { Invoke-WebRequest -Uri $entry.url -OutFile $archive }
+        if (-not (Test-Path -LiteralPath $archive)) {
+            if ($env:SHIFTWHEEL_OFFLINE -eq '1') { throw ('Offline check: missing pinned installer tool in cache: ' + $entry.filename) }
+            Invoke-WebRequest -Uri $entry.url -OutFile $archive
+        }
         if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $entry.sha256) { throw ('Installer tool SHA256 mismatch: ' + $entry.filename) }
     }
     # Extract the official installer as data. Never run it or register the compiler.

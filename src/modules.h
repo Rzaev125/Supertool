@@ -15,7 +15,8 @@ const std::vector<ModuleSpec>& module_catalog();
 bool safe_module_path(std::string_view path);
 ModuleStatus module_status(const std::filesystem::path& app,const ModuleSpec& spec);
 void verify_module_archive(const std::filesystem::path& cab,const ModuleSpec& spec);
-void extract_module_cab(const std::filesystem::path& cab,const std::filesystem::path& fresh_directory,const ModuleSpec& spec,std::stop_token stop);
+// Developer staging may skip per-file disk flush; production installation keeps it.
+void extract_module_cab(const std::filesystem::path& cab,const std::filesystem::path& fresh_directory,const ModuleSpec& spec,std::stop_token stop,bool durable_files=true);
 ModuleInstallResult install_module(const std::filesystem::path& app,const ModuleSpec& spec,std::stop_token stop,const UpdateProgress& progress={},const UpdateTransport& transport={});
 void cleanup_module_downloads(const std::filesystem::path& app,std::span<const ModuleSpec> catalog=module_catalog()) noexcept;
 // Installs no dependent modules implicitly; callers must install advertised dependencies first.
