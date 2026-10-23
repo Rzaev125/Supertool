@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 from PIL import Image, ImageChops, ImageCms
-from heic_fixture import attach_exif, RESERVED
+from heic_fixture import attach_exif, encode_exif_blocks, RESERVED
 
 parser = argparse.ArgumentParser(); parser.add_argument('--exe', type=Path, required=True)
 exe = parser.parse_args().exe.resolve(); module = exe.parent / 'modules/heic'
@@ -29,6 +29,7 @@ def convert(source, target='png', fail=False, **options):
     detail = error.read_text('utf-8') if error.exists() else result.stderr
     if fail:
         assert result.returncode != 0 and not output.exists(), source
+        return str(detail)
     else:
         assert result.returncode == 0 and output.exists(), detail
     return output
@@ -107,4 +108,29 @@ raw=root/'hdr-raw.png'; result=run(module/'heif-dec.exe','--quiet',hdr,raw); ass
 w,h,values=read_png16(raw); expected=tone_reference(w,h,values,'pq').transpose(operations[6])
 actual=Image.open(convert(fixture)).convert('RGBA')
 assert actual.size==expected.size and max(v[1] for v in ImageChops.difference(actual,expected).getextrema())<=2,'HDR+EXIF'
-print('PASS HEIC EXIF: all eight orientations, endian, container precedence/identity, malformed and duplicate EXIF')
+
+# Real independently associated metadata items, including the 4-byte HEIF offset
+# in the 4MiB limit. Read back actual counts/bytes before invoking the app.
+limit=4*1024*1024
+small_reference=root/'boundary-small.heic'
+encode_exif_blocks(module,original,small_reference,[tiff(1)])
+expected_boundary=Image.open(convert(small_reference)).convert('RGBA')
+for length in [limit-1,limit,limit+1]:
+    payload=tiff(1)+b'\0'*(length-4-len(tiff(1)))
+    fixture=root/f'boundary-{length}.heic'
+    stored=encode_exif_blocks(module,original,fixture,[payload])
+    assert len(stored)==1 and len(stored[0])==length
+    start=4+int.from_bytes(stored[0][:4],'big')
+    assert stored[0][start:]==payload,'not the intended valid TIFF payload'
+    if length>limit:
+        assert 'Повреждены метаданные EXIF HEIC' in convert(fixture,fail=True)
+    else:
+        for mode in ['remove','photo_details']:
+            actual=Image.open(convert(fixture,image_metadata=mode)).convert('RGBA')
+            assert actual.size==pixels.size
+            assert actual.tobytes()==expected_boundary.tobytes(),'metadata size changed pixels versus same encoder/small EXIF'
+for label,blocks in [('duplicate',[tiff(1),tiff(1)]),('conflicting',[tiff(1),tiff(6)]),('three',[tiff(1)]*3)]:
+    fixture=root/f'multi-exif-{label}.heic';stored=encode_exif_blocks(module,original,fixture,blocks)
+    assert len(stored)==len(blocks)
+    assert 'Несколько блоков EXIF HEIC' in convert(fixture,fail=True)
+print('PASS HEIC EXIF: orientations/container/HDR/ICC; stored-size4MiB-1/4MiB/4MiB+1 and2/3 independent EXIF blocks')
