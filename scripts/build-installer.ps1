@@ -1,6 +1,6 @@
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.9.0',
-    [string]$PayloadDirectory = (Join-Path $PSScriptRoot '..\out\ShiftWheel'),
+    [string]$PayloadDirectory = (Join-Path $PSScriptRoot '..\out\ShiftWheel-0.9.0-full'),
     [string]$TestRoot = '',
     [ValidateSet('full','core')][string]$Distribution='full'
 )
@@ -17,7 +17,7 @@ if ($isolated) {
     $allowed = Join-Path $root 'build\installer-tests'
     if (-not $TestRoot.StartsWith($allowed + '\', [StringComparison]::OrdinalIgnoreCase) -or $TestRoot.Contains('"')) { throw 'TestRoot must be a dedicated directory inside build\installer-tests.' }
 }
-& (Join-Path $root 'installer\stage-payload.ps1') -PayloadDirectory $PayloadDirectory -StageDirectory $stage -Version $Version -AllowTestPayload:$isolated
+& (Join-Path $root 'installer\stage-payload.ps1') -PayloadDirectory $PayloadDirectory -StageDirectory $stage -Version $Version -AllowTestPayload:($isolated -and $Distribution -ne 'core')
 $compiler = & (Join-Path $PSScriptRoot 'fetch-installer-tools.ps1')
 $name = 'ShiftWheel-' + $Version + $(if($Distribution -eq 'core'){'-core'}else{''}) + '-win-x64-setup'
 if ($isolated) { $name += '-ISOLATED-TEST' }

@@ -15,7 +15,10 @@ if repository != 'Rzaev125/Supertool':
     raise SystemExit('Unexpected publication repository')
 names = [f'ShiftWheel-{version}-win-x64-setup.exe', f'ShiftWheel-{version}-win-x64.zip',
          f'ShiftWheel-{version}-source.zip']
+names += [f'ShiftWheel-{version}-core-win-x64-setup.exe', f'ShiftWheel-{version}-core-win-x64.zip']
 paths = [root / 'out' / name for name in names]
+paths += sorted((root / 'out/module-assets').glob('*.cab'))
+paths += [root / 'out/module-assets/catalog.json']
 for path in paths:
     with path.open('rb') as f:
         digest = hashlib.file_digest(f, 'sha256').hexdigest()
