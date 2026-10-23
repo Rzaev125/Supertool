@@ -2,6 +2,7 @@
 #include "job_store.h"
 #include <fstream>
 #include <iostream>
+#include <array>
 using namespace shiftwheel;
 namespace fs=std::filesystem;
 void check(bool b,const char* m){if(!b)throw std::runtime_error(m);}
@@ -27,6 +28,24 @@ int main(int argc,char** argv){try{
   save_local_state(root/L"modules/.active-ffmpeg","../corrupt");
   install_module(root,spec,{}, {},copy);check(module_status(root,spec).installed,"repair corrupt pointer");
   auto current=module_directory(root,"ffmpeg");check(fs::is_regular_file(current/L"sub/file.txt"),"atomic pointer publication");
+  {
+   WinHandle reader;fs::path retained;
+   auto copy_locked=[&](const auto& url,auto size,std::ostream& out,std::stop_token stop){
+    copy(url,size,out,stop);out.flush();
+    for(auto& entry:fs::directory_iterator(root/L"modules"))if(entry.path().extension()==L".cab")retained=entry.path();
+    reader.value=CreateFileW(retained.c_str(),GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
+    check(reader.value!=INVALID_HANDLE_VALUE,"CAB reader denies deletion");
+   };
+   auto installed=install_module(root,spec,{}, {},copy_locked);check(installed.cache_retained,"successful installation reports retained cache");
+   check(module_status(root,spec).installed,"locked CAB does not fail committed installation");
+   check(!fs::exists(current),"old managed module retired despite cleanup failure");
+   check(fs::exists(retained),"locked CAB retained safely");
+   CloseHandle(reader.value);reader.value=INVALID_HANDLE_VALUE;
+   current=module_directory(root,"ffmpeg");
+   // Fixture has a custom pin: production cleanup must not trust arbitrary CABs.
+   cleanup_module_downloads(root);check(fs::exists(retained),"unrecognized download pin preserved");
+   std::array<ModuleSpec,1> catalog{spec};cleanup_module_downloads(root,catalog);check(!fs::exists(retained),"unlocked owned CAB cleanup retried");
+  }
   {ModuleLease reading(root,false);rejects([&]{install_module(root,spec,{}, {},copy);});check(module_directory(root,"ffmpeg")==current,"busy publication leaves original");}
   auto corrupt=spec;corrupt.sha256[0]=corrupt.sha256[0]==L'0'?L'1':L'0';rejects([&]{install_module(root,corrupt,{}, {},copy);});check(module_directory(root,"ffmpeg")==current,"hash failure leaves original");
   std::stop_source stop;stop.request_stop();rejects([&]{install_module(root,spec,stop.get_token(),{},copy);});

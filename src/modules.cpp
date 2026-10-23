@@ -102,7 +102,21 @@ void extract_module_cab(const fs::path& cab,const fs::path& fresh,const ModuleSp
  for(auto h:c.files)CloseHandle(h);context=nullptr;stopped(stop);
  if(!ok||c.failed||c.names.size()!=s.count||c.bytes!=s.unpacked||c.written!=s.unpacked)bad();
 }
-void install_module(const fs::path& app,const ModuleSpec& spec,std::stop_token stop,const UpdateProgress& progress,const UpdateTransport& transport){
+void cleanup_module_downloads(const fs::path& app,std::span<const ModuleSpec> catalog) noexcept{
+ try{
+  ModuleLease lease(app,true);
+  for(const auto& spec:catalog){
+   auto dir=module_directory(app,spec.id);if(dir.parent_path()!=app/L"modules"||!dir.filename().string().starts_with("pkg-"))continue;
+   auto receipt=load_local_state(dir/L".sw-module",500);
+   if(!receipt||*receipt!=spec.id+"\n"+narrow(spec.version)+"\n"+narrow(spec.inventory_sha256))continue;
+   auto cab=dir;cab+=L".cab";
+   std::error_code ec;if(!fs::exists(cab,ec))continue;
+   try{verify_module_archive(cab,spec);fs::remove(cab,ec);}catch(...){}
+  }
+ }catch(...){}
+}
+ModuleInstallResult install_module(const fs::path& app,const ModuleSpec& spec,std::stop_token stop,const UpdateProgress& progress,const UpdateTransport& transport){
+ cleanup_module_downloads(app);
  stopped(stop);validate_local_path(app/L"modules",false);fs::create_directories(app/L"modules");
  auto name=unique();auto stage=app/L"modules"/name;auto cab=app/L"modules"/(name+".cab");
  if(fs::space(app).available<spec.bytes+spec.unpacked+16*1024*1024)throw std::runtime_error("Недостаточно места для загрузки и распаковки модуля.");
@@ -116,7 +130,8 @@ void install_module(const fs::path& app,const ModuleSpec& spec,std::stop_token s
   if(!spec.dependency.empty()){auto& all=module_catalog();auto it=std::find_if(all.begin(),all.end(),[&](auto& x){return x.id==spec.dependency;});if(it==all.end()||!module_status(app,*it).installed)throw std::runtime_error("Сначала установите зависимый модуль PDF.");}
   fs::path old;try{old=module_directory(app,spec.id);}catch(...){/* Preserve unknown old data; repair the pointer only. */}
   save_local_state(app/L"modules"/(".active-"+spec.id),name);committed=true;
-  fs::remove(cab);retire(app,old,spec);
+  std::error_code cleanup_error;fs::remove(cab,cleanup_error);retire(app,old,spec);
+  return {static_cast<bool>(cleanup_error)};
  }catch(...){std::error_code ec;fs::remove(cab,ec);if(!committed)remove_owned_tree(stage);throw;}
 }
 void remove_module(const fs::path& app,const ModuleSpec& spec){

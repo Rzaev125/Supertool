@@ -275,12 +275,15 @@ private:
             try{
                 if(remove)remove_module(root,spec);
                 else {
+                    bool retained_download=false;
                     auto install=[&](const ModuleSpec& item){
                         ULONGLONG last=0;
-                        install_module(root,item,stop,[&](auto got,auto total){auto now=GetTickCount64();if(now-last<200&&got!=total)return;last=now;notice(item.name+L": загрузка "+std::to_wstring(total?got*100/total:0)+L"%. Затем проверка и распаковка…");});
+                        auto result=install_module(root,item,stop,[&](auto got,auto total){auto now=GetTickCount64();if(now-last<200&&got!=total)return;last=now;notice(item.name+L": загрузка "+std::to_wstring(total?got*100/total:0)+L"%. Затем проверка и распаковка…");});
+                        retained_download=retained_download||result.cache_retained;
                     };
                     if(!spec.dependency.empty())for(auto& d:module_catalog())if(d.id==spec.dependency&&!module_status(root,d).installed)install(d);
                     install(spec);
+                    if(retained_download){notice(L"Модуль установлен и проверен. Временный CAB занят другой программой; повторим очистку при следующей установке модуля.");PostMessageW(window_,wm_modules,0,0);return;}
                 }
                 notice(remove?L"Модуль отключён. Неизвестные и старые офлайн-файлы сохранены в modules.":L"Модуль установлен и проверен. Можно конвертировать файлы.");
             }catch(const std::exception& e){notice(from_utf8(e.what()));}
