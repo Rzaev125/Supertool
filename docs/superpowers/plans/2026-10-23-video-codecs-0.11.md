@@ -15,22 +15,22 @@
 
 ## Task 1: README and blended WebP fixture
 
-- [ ] Correct format matrix and all animation-rejection statements in README; retain actual AVIF/TIFF/ICC/EXIF restrictions.
-- [ ] Construct a real WebP from explicit ANMF chunks: offset subrectangles, alpha 128/64 over an existing alpha canvas, blend enabled, unequal delays/finite loop. Assert every composited pixel independently, not only frame zero.
-- [ ] Test WebP round-trip frames/delays/loop and no-blend mutant sensitivity. Existing implementation may pass because this is missing coverage, not a confirmed runtime defect. Run conversion_animated_images; commit.
+- [x] Correct format matrix and all animation-rejection statements in README; retain actual AVIF/TIFF/ICC/EXIF restrictions.
+- [x] Construct a real WebP from explicit ANMF chunks: offset subrectangles, alpha 128/64 over an existing alpha canvas, blend enabled, unequal delays/finite loop. Assert every composited pixel independently, not only frame zero.
+- [x] Test WebP round-trip frames/delays/loop and no-blend mutant sensitivity. Existing implementation may pass because this is missing coverage, not a confirmed runtime defect. Run conversion_animated_images; commit.
 
 ## Task 2: HEVC/AV1 settings and pipeline
 
-- [ ] Write tests first: codec INI/worker roundtrip/default/refusal, old/new queue compatibility, UI dropdown persistence, deterministic backend selection/fallback/cancellation and container checks; watch new feature fail.
-- [ ] Add VideoCodec and UI choice; SWQ2 writes/legacy SWQ1 reads, preserving codec on recovery/retry. Keep existing IDs stable by appending UI control IDs.
-- [ ] Generalize encoder arguments and requested-codec probes; keep ownership/cancellation behavior. Add real FFmpeg tests for supported containers/presets, complete strict decode, codec tags, audio, resize, duration/frame count, CPU-only/unavailable/runtime fallback, source integrity and incompatible-container refusal. Hardware success claims only for devices actually tested.
-- [ ] Run relevant tests and real codecs, then commit.
+- [x] Write tests first: codec INI/worker roundtrip/default/refusal, old/new queue compatibility, UI dropdown persistence, deterministic backend selection/fallback/cancellation and container checks; watch new feature fail.
+- [x] Add VideoCodec and UI choice; SWQ2 writes/legacy SWQ1 reads, preserving codec on recovery/retry. Keep existing IDs stable by appending UI control IDs.
+- [x] Generalize encoder arguments and requested-codec probes; keep ownership/cancellation behavior. Add real FFmpeg tests for supported containers/presets, complete strict decode, codec tags, audio, resize, duration/frame count, CPU-only/unavailable/runtime fallback, source integrity and incompatible-container refusal. Hardware success claims only for devices actually tested.
+- [x] Run relevant tests and real codecs, then commit.
 
 ## Task 3: Verify and release preview
 
-- [ ] Version 0.11.0, packaging/docs refer to new capabilities; reuse immutable engine 0.9 packages. Full CTest, clean /W4 build, one independent review, one pass of important fixes. Record every deferred item/ruling.
-- [ ] Build/check core/full ZIP/setup/source, exact inventories/hashes, isolated installer lifecycle; publish source branch/draft PR stacked on 0.10 and preview assets; verify anonymous downloads and remote hashes. Keep stable/main unchanged.
-- [ ] Persist final results/limits and close this plan; no physical Explorer/DPI/clean-VM/signing claims.
+- [x] Version 0.11.0, packaging/docs refer to new capabilities; reuse immutable engine 0.9 packages. Full CTest, clean /W4 build, one independent review, one pass of important fixes. Record every deferred item/ruling.
+- [x] Build/check core/full ZIP/setup/source, exact inventories/hashes, isolated installer lifecycle; publish source branch/draft PR stacked on 0.10 and preview assets; verify anonymous downloads and remote hashes. Keep stable/main unchanged.
+- [x] Persist final results/limits and close this plan; no physical Explorer/DPI/clean-VM/signing claims.
 
 ## Shared interfaces / Review Focus
 
