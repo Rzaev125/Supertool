@@ -1,6 +1,7 @@
 #pragma once
 #include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -10,6 +11,9 @@ enum class Format { Jpeg, Png, Bmp, Mp4, Mkv, Webm, Mp3, Wav, Flac, M4a, Ogg, Pd
 enum class Category { Unsupported, Image, Video, Audio, Document, Spreadsheet, Pdf, Presentation };
 Category category(const std::filesystem::path& path);
 std::vector<Format> formats_for(const std::filesystem::path& path);
+// Filters preferences without changing them. The callback reads cached module status.
+std::vector<Format> available_formats(const std::filesystem::path& input, std::vector<Format> candidates,
+                                    const std::function<bool(std::string_view)>& module_available);
 bool supports_conversion(const std::filesystem::path& path, Format format);
 bool folder_output(const std::filesystem::path& path, Format format);
 Format parse_format(std::wstring_view id);

@@ -51,6 +51,42 @@ bool supports_conversion(const std::filesystem::path& path, Format format) {
     auto formats = formats_for(path);
     return std::find(formats.begin(), formats.end(), format) != formats.end();
 }
+std::vector<Format> available_formats(const std::filesystem::path& input, std::vector<Format> candidates,
+                                    const std::function<bool(std::string_view)>& module_available) {
+    const auto source_category = category(input);
+    auto image_available = [&](Format format) {
+        switch (format) {
+        case Format::Avif: return module_available("avif");
+        case Format::Heic: return module_available("heic");
+        case Format::Webp: case Format::Gif: return module_available("ffmpeg");
+        default: return true; // JPEG, PNG, BMP and TIFF use Windows codecs.
+        }
+    };
+    switch (source_category) {
+    case Category::Image:
+        if (!image_available(parse_format(input.extension().wstring()))) return {};
+        break;
+    case Category::Video: case Category::Audio:
+        if (!module_available("ffmpeg")) return {};
+        break;
+    case Category::Document: case Category::Spreadsheet: case Category::Presentation:
+        if (!module_available("libreoffice")) return {};
+        break;
+    case Category::Pdf:
+        // PDFium can extract existing text without the optional OCR module.
+        if (!module_available("pdfium")) return {};
+        break;
+    default: return {};
+    }
+    const auto supported = formats_for(input);
+    std::erase_if(candidates, [&](Format format) {
+        if (std::find(supported.begin(), supported.end(), format) == supported.end()) return true;
+        if (source_category == Category::Image) return !image_available(format);
+        return source_category == Category::Presentation && (format == Format::Png || format == Format::Jpeg) &&
+            !module_available("pdfium");
+    });
+    return candidates;
+}
 bool folder_output(const std::filesystem::path& path, Format format) {
     return ((category(path) == Category::Pdf || category(path) == Category::Presentation) && (format == Format::Png || format == Format::Jpeg)) ||
         (category(path) == Category::Spreadsheet && format == Format::Csv);

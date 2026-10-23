@@ -1,6 +1,7 @@
 #include "policy.h"
 #include <windows.h>
 #include <shellapi.h>
+#include <algorithm>
 #include <iostream>
 #include <stdexcept>
 #include <vector>
@@ -55,6 +56,43 @@ int main() {
         check(!supports_conversion(L"p.pdf", Format::Docx), "no false OCR capability");
         check(!supports_conversion(L"s.xlsx", Format::Mp4), "incompatible route rejected");
         check(parse_format(L"WEBM") == Format::Webm, "case insensitive target IDs");
+    });
+    run("wheel only offers routes with installed input and output modules", [] {
+        std::vector<std::string_view> installed;
+        auto available = [&](const std::filesystem::path& input) {
+            return available_formats(input, formats_for(input), [&](std::string_view id) {
+                return std::find(installed.begin(), installed.end(), id) != installed.end();
+            });
+        };
+        const std::vector<Format> builtin{Format::Jpeg, Format::Png, Format::Bmp, Format::Tiff};
+        check(available(L"photo.png") == builtin, "Core must hide optional image encoders");
+        for (auto input : {L"photo.AVIF", L"photo.HEIF", L"photo.webp", L"photo.gif", L"clip.mp4", L"song.wav", L"report.docx", L"table.xlsx", L"slides.pptx", L"pages.pdf"})
+            check(available(input).empty(), "missing input decoder must hide every route");
+        installed = {"avif"};
+        auto avif = builtin; avif.insert(avif.begin() + 3, Format::Avif);
+        check(available(L"photo.avif") == avif, "AVIF decoder and encoder unlock only their routes");
+        check(available(L"photo.heic").empty(), "AVIF cannot substitute for HEIC decoder");
+        installed = {"heic"};
+        auto heic = builtin; heic.push_back(Format::Heic);
+        check(available(L"photo.HEIF") == heic, "HEIF alias uses installed HEIC module");
+        installed = {"ffmpeg"};
+        auto media = builtin; media.insert(media.begin() + 3, Format::Webp); media.push_back(Format::Gif);
+        check(available(L"photo.webp") == media && available(L"photo.gif") == media, "WebP and GIF use FFmpeg for reading and writing");
+        for (auto input : {L"clip.mov", L"song.opus"}) check(available(input) == formats_for(input), "media module unlocks audio and video");
+        installed = {"libreoffice"};
+        for (auto input : {L"report.docx", L"table.xlsx"}) check(available(input) == formats_for(input), "Office module unlocks documents and sheets");
+        check(available(L"slides.pptx") == std::vector<Format>({Format::Pdf, Format::Pptx, Format::Odp}), "slide images additionally require PDFium");
+        installed = {"pdfium"};
+        check(available(L"pages.pdf") == formats_for(L"pages.pdf"), "text extraction does not require optional OCR");
+        check(available(L"slides.pptx").empty(), "PDFium alone cannot read presentations");
+        installed = {"ffmpeg", "avif", "heic", "libreoffice", "pdfium", "ocr"};
+        for (auto input : {L"photo.png", L"photo.avif", L"photo.heic", L"photo.gif", L"clip.mp4", L"song.mp3", L"report.docx", L"table.xlsx", L"slides.pptx", L"pages.pdf"})
+            check(available(input) == formats_for(input), "Full must keep all supported routes");
+        installed.clear();
+        check(available(L"photo.png") == builtin, "removal must take effect on next query");
+        const std::vector<Format> preference{Format::Heic, Format::Tiff, Format::Avif, Format::Png};
+        check(available_formats(L"photo.png", preference, [](auto) { return false; }) == std::vector<Format>({Format::Tiff, Format::Png}), "filter preserves configured order");
+        check(preference.front() == Format::Heic && preference.size() == 4, "filter must not erase preferences");
     });
     run("AVIF input and output routes", [] {
         check(category(L"photo.AVIF") == Category::Image, "AVIF is an image");

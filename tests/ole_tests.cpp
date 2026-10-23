@@ -1,4 +1,5 @@
 #include "wheel.h"
+#include "options.h"
 #include <shlobj.h>
 #include <winioctl.h>
 #include <fstream>
@@ -190,6 +191,44 @@ int main() {
         effect = DROPEFFECT_COPY; wheel->Drop(data.Get(), MK_SHIFT, point(false), &effect);
         check(effect == DROPEFFECT_COPY && chosen == Format::Webp, "single visible sector works");
         wheel->set_format_provider({});
+    });
+    run("module availability filters sectors, batches and late drops", [&] {
+        Settings preferences;
+        preferences.wheels[Category::Image] = {Format::Avif, Format::Png};
+        bool avif_installed = false;
+        wheel->set_format_provider([&](const fs::path& file) {
+            return available_formats(file, configured_formats(file, preferences), [&](std::string_view id) {
+                return id == "avif" && avif_installed;
+            });
+        });
+        auto drop = [&](IDataObject* source) {
+            wheel->show(POINT{500, 400}); DWORD effect = DROPEFFECT_COPY;
+            wheel->DragEnter(source, MK_SHIFT, point(false), &effect);
+            UpdateWindow(wheel->handle());
+            effect = DROPEFFECT_COPY; wheel->Drop(source, MK_SHIFT, point(false), &effect);
+            return effect;
+        };
+        check(drop(data.Get()) == DROPEFFECT_COPY && chosen == Format::Png, "absent AVIF sector must disappear and PNG take its place");
+        avif_installed = true;
+        check(drop(data.Get()) == DROPEFFECT_COPY && chosen == Format::Avif, "installation restores AVIF at configured position");
+        wheel->show(POINT{500, 400}); DWORD effect = DROPEFFECT_COPY;
+        wheel->DragEnter(data.Get(), MK_SHIFT, point(false), &effect);
+        avif_installed = false; const int before = submitted;
+        effect = DROPEFFECT_COPY; wheel->Drop(data.Get(), MK_SHIFT, point(false), &effect);
+        check(effect == DROPEFFECT_NONE && submitted == before, "module removed during drag cannot change selected route or submit");
+        preferences.wheels[Category::Image] = {Format::Avif};
+        check(drop(data.Get()) == DROPEFFECT_NONE && submitted == before, "empty availability must not fall back to unconfigured formats");
+        preferences.wheels[Category::Image] = {Format::Avif, Format::Png};
+        const auto avif_input = root / L"optional.avif"; { std::ofstream f(avif_input); f << "fixture"; }
+        auto unreadable = file_data({avif_input});
+        check(drop(unreadable.Get()) == DROPEFFECT_NONE && submitted == before, "missing source decoder leaves no sectors");
+        auto batch = file_data({input, avif_input}); int batches = 0;
+        wheel->set_batch_handler([&](std::vector<fs::path>, Format format) { check(format == Format::Avif, "batch keeps configured order"); ++batches; });
+        check(drop(batch.Get()) == DROPEFFECT_NONE && batches == 0, "one missing source decoder rejects whole batch");
+        avif_installed = true;
+        check(drop(batch.Get()) == DROPEFFECT_COPY && batches == 1, "batch becomes available after module installation");
+        check(preferences.wheels[Category::Image] == std::vector<Format>({Format::Avif, Format::Png}), "module changes must not rewrite saved format preferences");
+        wheel->set_batch_handler({}); wheel->set_format_provider({});
     });
     run("mixed batch uses shared formats and submits once", [&] {
         wheel->set_format_provider({});

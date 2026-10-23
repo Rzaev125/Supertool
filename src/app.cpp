@@ -72,7 +72,12 @@ public:
         if (!window_) throw std::runtime_error("Не удалось создать окно управления.");
         wheel_.Attach(new Wheel([this] { return queue_.pending() >= 256; }, [this](std::filesystem::path input, Format format) { enqueue({input}, format); }));
         wheel_->set_batch_handler([this](std::vector<std::filesystem::path> files, Format format) { enqueue(files, format); });
-        wheel_->set_format_provider([this](const std::filesystem::path& input) { return configured_formats(input, settings_); });
+        wheel_->set_format_provider([this](const std::filesystem::path& input) {
+            return available_formats(input, configured_formats(input, settings_), [this](std::string_view id) {
+                const auto found = module_status_cache_.find(std::string(id));
+                return !modules_busy_ && found != module_status_cache_.end() && found->second.installed;
+            });
+        });
         if (FAILED(wheel_->initialize(instance))) throw std::runtime_error("Не удалось создать колесо или зарегистрировать приём файлов.");
         update_policy_path_=settings_path_.parent_path()/L"ShiftWheel.update-state";
         try{update_policy_=load_update_policy(update_policy_path_);}catch(const std::exception& e){startup_notice_=from_utf8(e.what());}
