@@ -8,14 +8,24 @@ int main(){try{
  auto dir=std::filesystem::current_path()/L"test-output"/(L"store-"+std::to_wstring(GetCurrentProcessId()));std::filesystem::create_directories(dir);
  auto input=dir/L"Исходник ə.png",path=dir/L"queue.dat";
  {std::ofstream f(input);f<<"source";}
- JobQueue queue;ConversionOptions options;options.pdf_dpi=300;options.ocr_languages="rus+aze";options.video_codec=VideoCodec::Av1;
+ JobQueue queue;ConversionOptions options;options.image_metadata=ImageMetadata::CaptureDate;options.pdf_dpi=300;options.ocr_languages="rus+aze";options.video_codec=VideoCodec::Av1;
  queue.enqueue({input,input},Format::Jpeg,options,dir);queue.capture_inputs();auto id=queue.next()->id;queue.start(id);
  save_queue(path,queue.snapshot());auto snapshot=load_queue(path);check(snapshot.has_value(),"snapshot missing");
  check(snapshot->jobs[1].options.video_codec==VideoCodec::Av1,"durable codec lost");
- auto legacy=*load_local_state(path);check(legacy.starts_with("SWQ2"),"new queue format not versioned");legacy.replace(0,4,"SWQ1");
- for(size_t p=0;(p=legacy.find(" 0 3 \"rus+aze\"",p))!=std::string::npos;)legacy.replace(p,14," 0 \"rus+aze\"");
- save_local_state(dir/L"legacy.dat",legacy);auto old=load_queue(dir/L"legacy.dat");
- check(old->jobs[1].options.video_codec==VideoCodec::Default&&old->jobs[1].options.ocr_languages=="rus+aze","SWQ1 legacy defaults lost");std::filesystem::remove(dir/L"legacy.dat");
+ check(snapshot->jobs[1].options.image_metadata==ImageMetadata::CaptureDate,"durable metadata mode lost");
+ const auto current=*load_local_state(path);check(current.starts_with("SWQ3"),"new queue format not versioned");
+ for(const auto version : {"SWQ1","SWQ2"}) {
+  auto legacy=current;legacy.replace(0,4,version);const std::string field=" 0 3 1 \"rus+aze\"";
+  const std::string replacement=std::string(version)=="SWQ1"?" 0 \"rus+aze\"":" 0 3 \"rus+aze\"";
+  for(size_t p=0;(p=legacy.find(field,p))!=std::string::npos;)legacy.replace(p,field.size(),replacement);
+  save_local_state(dir/L"legacy.dat",legacy);auto old=load_queue(dir/L"legacy.dat");
+  check(old->jobs[1].options.video_codec==(std::string(version)=="SWQ1"?VideoCodec::Default:VideoCodec::Av1),"legacy codec lost");
+  check(old->jobs[1].options.image_metadata==ImageMetadata::Remove&&old->jobs[1].options.ocr_languages=="rus+aze","legacy metadata privacy default lost");
+  std::filesystem::remove(dir/L"legacy.dat");
+ }
+ auto invalid_metadata=queue.snapshot();invalid_metadata.jobs[0].options.image_metadata=static_cast<ImageMetadata>(99);
+ reject([&]{save_queue(path,invalid_metadata);});
+ check(load_queue(path)->jobs[0].options.image_metadata==ImageMetadata::CaptureDate,"invalid metadata replaced good snapshot");
  JobQueue restored;restored.restore(*snapshot);
  check(restored.paused()&&!restored.next(),"recovered queue automatically starts");
  check(restored.items()[0].state==JobState::Interrupted,"active job replayed");

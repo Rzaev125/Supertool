@@ -12,7 +12,7 @@ enum : int { Tabs = 100, Headline, Summary, Progress, ProgressText, Jobs, JobDet
     Cancel, Pause, Clear, Open, Retry, Remove,
     Quality = 200, Resources, ImageSize, VideoSize, AudioBitrate, PdfDpi,
     Output, Browse, AutoShow, CategoryChoice, Formats, MoveUp, MoveDown,
-    Apply, Defaults, SettingsError, PdfOcr, OcrEnglish, OcrRussian, OcrAzerbaijani, Acceleration, Startup, AutoUpdate, UpdateChannel, UpdateLabel, Codec=320 };
+    Apply, Defaults, SettingsError, PdfOcr, OcrEnglish, OcrRussian, OcrAzerbaijani, Acceleration, Startup, AutoUpdate, UpdateChannel, UpdateLabel, Codec=320, ImageMetadataChoice=322 };
 void check(bool value, const char* message) { if (!value) throw std::runtime_error(message); }
 HWND child(HWND parent, int id) {
     struct Search { int id; HWND result = nullptr; } search{id};
@@ -248,6 +248,19 @@ int main(int argc,char** argv) {
         click(child(window, Apply)); check(saved == before + 1, "empty acceleration choice rejected");
         panel.set_settings(Settings{});
     });
+    run("capture-date combo saves, restores and rejects invalid selection", [&] {
+        panel.set_settings(Settings{});
+        auto combo=child(window,ImageMetadataChoice);
+        check(SendMessageW(combo,CB_GETCOUNT,0,0)==2,"metadata choices exist");
+        check(SendMessageW(combo,CB_GETCURSEL,0,0)==0,"metadata stripped by default");
+        SendMessageW(combo,CB_SETCURSEL,1,0);const auto before=saved;
+        click(child(window,Apply));check(saved==before+1,"metadata choice saved");
+        check(static_cast<int>(saved_settings.conversion.image_metadata)==1,"capture date lost");
+        panel.set_settings(saved_settings);check(SendMessageW(combo,CB_GETCURSEL,0,0)==1,"metadata choice restored");
+        SendMessageW(combo,CB_SETCURSEL,static_cast<WPARAM>(-1),0);
+        click(child(window,Apply));check(saved==before+1,"empty metadata choice accepted");
+        panel.set_settings(Settings{});
+    });
     run("DPI resize preserves usable controls and keyboard scrolls settings", [&] {
         panel.show(true, false);
         RECT proposed{0, 0, 1110, 810};
@@ -264,6 +277,9 @@ int main(int argc,char** argv) {
         MapWindowPoints(nullptr, page, reinterpret_cast<POINT*>(&item), 2);
         check(item.top >= 0 && item.bottom <= viewport.bottom, "focused format list fits viewport");
         SendMessageW(section,CB_SETCURSEL,1,0);SendMessageW(window,WM_COMMAND,MAKEWPARAM(227,CBN_SELCHANGE),reinterpret_cast<LPARAM>(section));
+        auto metadata=child(window,ImageMetadataChoice);SendMessageW(metadata,WM_SETFOCUS,0,0);
+        GetWindowRect(metadata,&item);MapWindowPoints(nullptr,page,reinterpret_cast<POINT*>(&item),2);
+        check(item.top>=0&&item.bottom<=viewport.bottom,"focused metadata combo fits scrolled viewport at 144 DPI");
         SendMessageW(child(window, Quality), WM_SETFOCUS, 0, 0);
         GetScrollInfo(page, SB_VERT, &info); check(info.nPos < 80, "keyboard returns to top fields");
         HFONT font = reinterpret_cast<HFONT>(SendMessageW(child(window, Apply), WM_GETFONT, 0, 0));

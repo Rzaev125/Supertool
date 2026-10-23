@@ -24,7 +24,7 @@ enum Control : int {
     HistorySearch = 120, HistoryLabel, ClearHistory,
     UpdateInfo = 130, CheckUpdate, InstallUpdate, LaterUpdate,
     Modules=140,ModuleInfo,InstallModule,RemoveModule,CancelModule,RefreshModules,
-    Codec=320,CodecLabel
+    Codec=320,CodecLabel,ImageMetadataChoice,ImageMetadataLabel
 };
 struct CategoryEntry { Category category; const wchar_t* name; const wchar_t* sample; };
 constexpr std::array categories{
@@ -202,6 +202,8 @@ struct ControlPanel::Impl {
         label_control(AudioLabel, L"Битрейт аудио, кбит/с (0 — авто)"); number(AudioBitrate);
         label_control(PdfLabel, L"PDF в изображение, DPI"); number(PdfDpi);
         label_control(AccelerationLabel, L"Ускорение кодирования"); combo(Acceleration);
+        label_control(ImageMetadataLabel, L"Дата съёмки: JPEG/TIFF → JPEG/TIFF"); combo(ImageMetadataChoice);
+        for (const auto value : {L"Удалять EXIF/XMP", L"Сохранять только дату съёмки"}) SendMessageW(setting(ImageMetadataChoice), CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
         label_control(CodecLabel, L"Видеокодек"); combo(Codec);
         for (const auto value : {L"По формату: H.264 / VP9", L"H.264 — MP4 / MKV / MOV", L"HEVC — MP4 / MKV / MOV", L"AV1 — MP4 / MKV / WebM"}) SendMessageW(setting(Codec), CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
         for (const auto value : {L"Автоматически (GPU / CPU)", L"Только процессор (CPU)"}) SendMessageW(setting(Acceleration), CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
@@ -256,12 +258,12 @@ struct ControlPanel::Impl {
             std::all_of(settings_controls.begin(), settings_controls.end(), [](HWND control) { return control != nullptr; });
     }
 
-    int section_height() const { return settings_section == 0 ? 360 : settings_section == 1 ? 330 : settings_section == 2 ? 265 : 360; }
+    int section_height() const { return settings_section == 0 ? 360 : settings_section == 1 ? 398 : settings_section == 2 ? 265 : 360; }
     void layout_page() {
         if (!page) return;
         const std::vector<std::vector<int>> groups{
             {AutoShow,Startup,NotificationsLabel,Notifications,OutputLabel,Output,Browse,OutputHint,ExportDiagnostics},
-            {QualityLabel,Quality,ResourcesLabel,Resources,ImageLabel,ImageSize,VideoLabel,VideoSize,AudioLabel,AudioBitrate,PdfLabel,PdfDpi,AccelerationLabel,Acceleration,CodecLabel,Codec,PdfOcr,OcrEnglish,OcrRussian,OcrAzerbaijani},
+            {QualityLabel,Quality,ResourcesLabel,Resources,ImageLabel,ImageSize,VideoLabel,VideoSize,AudioLabel,AudioBitrate,PdfLabel,PdfDpi,AccelerationLabel,Acceleration,CodecLabel,Codec,ImageMetadataLabel,ImageMetadataChoice,PdfOcr,OcrEnglish,OcrRussian,OcrAzerbaijani},
             {WheelLabel,WheelHint,CategoryLabel,CategoryChoice,Formats,MoveUp,MoveDown},
             {AutoUpdate,UpdateLabel,UpdateChannel,UpdateInfo,CheckUpdate,InstallUpdate,LaterUpdate},
             {Modules,ModuleInfo,InstallModule,RemoveModule,CancelModule,RefreshModules}};
@@ -282,6 +284,7 @@ struct ControlPanel::Impl {
             }
             move_setting(CodecLabel,20,196,half,23);move_setting(Codec,20,222,half,160);
             move_setting(AccelerationLabel,right,196,half,23);move_setting(Acceleration,right,222,half,140);
+            move_setting(ImageMetadataLabel,20,330,width-40,23);move_setting(ImageMetadataChoice,20,356,width-40,130);
             move_setting(PdfOcr,20,260,width-40,26);move_setting(OcrEnglish,20,292,160,26);
             move_setting(OcrRussian,190,292,160,26);move_setting(OcrAzerbaijani,360,292,width-380,26);
         } else if(settings_section == 2) {
@@ -459,6 +462,7 @@ struct ControlPanel::Impl {
         SendMessageW(setting(Quality), CB_SETCURSEL, static_cast<WPARAM>(draft.conversion.quality), 0);
         SendMessageW(setting(Resources), CB_SETCURSEL, static_cast<WPARAM>(draft.conversion.resources), 0);
         SendMessageW(setting(Acceleration), CB_SETCURSEL, static_cast<WPARAM>(draft.conversion.video_acceleration), 0);
+        SendMessageW(setting(ImageMetadataChoice), CB_SETCURSEL, static_cast<WPARAM>(draft.conversion.image_metadata), 0);
         SendMessageW(setting(Codec), CB_SETCURSEL, static_cast<WPARAM>(draft.conversion.video_codec), 0);
         set_text(setting(ImageSize), std::to_wstring(draft.conversion.image_max_dimension));
         set_text(setting(VideoSize), std::to_wstring(draft.conversion.video_max_height));
@@ -492,6 +496,9 @@ struct ControlPanel::Impl {
         const auto acceleration = SendMessageW(setting(Acceleration), CB_GETCURSEL, 0, 0);
         if (acceleration < 0 || acceleration > 1) { settings_error(L"Выберите режим кодирования видео."); return false; }
         result.conversion.video_acceleration = static_cast<VideoAcceleration>(acceleration);
+        const auto metadata = SendMessageW(setting(ImageMetadataChoice), CB_GETCURSEL, 0, 0);
+        if (metadata < 0 || metadata > 1) { settings_error(L"Выберите режим метаданных изображения."); return false; }
+        result.conversion.image_metadata = static_cast<ImageMetadata>(metadata);
         const auto codec = SendMessageW(setting(Codec), CB_GETCURSEL, 0, 0);
         if (codec < 0 || codec > 3) { settings_error(L"Выберите видеокодек."); return false; }
         result.conversion.video_codec = static_cast<VideoCodec>(codec);

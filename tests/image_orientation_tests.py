@@ -103,3 +103,53 @@ extra=data[pos:pos+8+length+(length&1)]
 duplicate=bytearray(data+extra);struct.pack_into('<I',duplicate,4,len(duplicate)-8)
 bad=root/'duplicate.webp';bad.write_bytes(duplicate);convert(bad,fail=True)
 print('PASS alpha, modern bridges, invalid and duplicate EXIF, no overwrite/source changes', flush=True)
+
+# More metadata integrity cases: independent endian/type/count variants.
+source=root/'photo-webp-6.webp'; original=source.read_bytes();pos=original.index(b'EXIF')
+length=struct.unpack_from('<I',original,pos+4)[0]
+# Replace the EXIF payload while retaining a valid WebP envelope and flag.
+def webp_exif(payload,name):
+    chunk=b'EXIF'+struct.pack('<I',len(payload))+payload+(b'\0' if len(payload)&1 else b'')
+    data=bytearray(original[:pos]+chunk+original[pos+8+length+(length&1):])
+    struct.pack_into('<I',data,4,len(data)-8)
+    path=root/name;path.write_bytes(data);return path
+for endian in ['<','>']:
+    tiff=(b'II' if endian=='<' else b'MM')+struct.pack(endian+'HIH',42,8,1)
+    entry=struct.pack(endian+'HHIHH',274,3,1,6,0)
+    payload=tiff+entry+struct.pack(endian+'I',0)
+    compare(convert(webp_exif(payload,f'endian-{ord(endian)}.webp')),transformed(base,6))
+    for bad_payload in [payload[:7],tiff+struct.pack(endian+'HHII',274,4,1,6)+bytes(4),
+                        tiff+struct.pack(endian+'HHII',274,3,2,6)+bytes(4),
+                        tiff[:8]+struct.pack(endian+'H',2)+entry+entry+bytes(4)]:
+        convert(webp_exif(bad_payload,f'bad-exif-{number}.webp'),fail=True)
+# Conflicting JPEG APP1 blocks must not pick an arbitrary first orientation.
+data=(root/'photo-jpg-6.jpg').read_bytes()
+exif=Image.Exif();exif[274]=3;payload=exif.tobytes()
+app1=b'\xff\xe1'+struct.pack('>H',len(payload)+2)+payload
+bad=root/'ambiguous.jpg';bad.write_bytes(data[:2]+app1+data[2:]);convert(bad,fail=True)
+
+# Only capture date is opt-in: no orientation, camera, author, GPS or XMP copying.
+for kind in ['jpg','tiff']:
+    exif=Image.Exif();exif[274]=6;exif[315]='private author';exif[271]='private camera'
+    exif[34853]={1:'N'};exif[34665]={36867:'2024:02:29 12:34:56',37521:'123',36881:'+04:00'}
+    serialized=Image.Exif();serialized.load(exif.tobytes())
+    source=root/f'capture.{kind}';base.save(source,exif=serialized)
+    for target in ['jpg','tiff']:
+        for mode in ['remove','capture_date']:
+            out=convert(source,target,image_metadata=mode)
+            with Image.open(out) as image:
+                tags=image.getexif();nested=tags.get_ifd(34665)
+                assert nested.get(36867)==('2024:02:29 12:34:56' if mode=='capture_date' else None), (kind,target,mode,nested)
+                assert not any(t in tags for t in [274,315,271,34853,700]), tags
+                assert not any(t in nested for t in [37521,36881,37500]), nested
+                assert image.size==(64,96)
+    with Image.open(convert(source,'png',image_metadata='capture_date')) as image:
+        assert not image.getexif(), 'unsupported target copied metadata'
+# Invalid, missing, non-string and excessive dates are ignored, never copied.
+for value in ['2023:02:29 12:34:56','2024:13:01 12:34:56','2024:01:01 24:00:00',
+              '0000:01:01 00:00:00','2024:01:01 00:00:00x','x'*4096,42]:
+    exif=Image.Exif();exif[34665]={36867:value}
+    source=root/f'bad-date-{number}.jpg';base.save(source,exif=exif)
+    with Image.open(convert(source,'jpg',image_metadata='capture_date')) as image:
+        assert 36867 not in image.getexif().get_ifd(34665), value
+print('PASS capture date whitelist, all JPEG/TIFF pairs, opt-in and strict calendar/type/length checks', flush=True)

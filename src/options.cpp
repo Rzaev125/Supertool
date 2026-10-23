@@ -86,6 +86,11 @@ bool conversion_field(ConversionOptions& o, std::string_view key, std::string_vi
     else if (key == "pdf_dpi") o.pdf_dpi = number(value);
     else if (key == "pdf_ocr") { if (value != "0" && value != "1") invalid(); o.pdf_ocr = value == "1"; }
     else if (key == "ocr_languages") o.ocr_languages = value;
+    else if (key == "image_metadata") {
+        if (value == "remove") o.image_metadata = ImageMetadata::Remove;
+        else if (value == "capture_date") o.image_metadata = ImageMetadata::CaptureDate;
+        else invalid();
+    }
     else if (key == "video_codec") {
         if (value == "default") o.video_codec = VideoCodec::Default;
         else if (value == "h264") o.video_codec = VideoCodec::H264;
@@ -167,6 +172,7 @@ std::string serialize_options(const ConversionOptions& o) {
         "\naudio_bitrate_kbps=" + std::to_string(o.audio_bitrate_kbps) + "\npdf_dpi=" + std::to_string(o.pdf_dpi) +
         "\npdf_ocr=" + (o.pdf_ocr ? "1" : "0") + "\nocr_languages=" + o.ocr_languages +
         "\nvideo_acceleration=" + (o.video_acceleration == VideoAcceleration::Cpu ? "cpu" : "auto") +
+        "\nimage_metadata=" + (o.image_metadata == ImageMetadata::CaptureDate ? "capture_date" : "remove") +
         "\nvideo_codec=" + (o.video_codec == VideoCodec::H264 ? "h264" : o.video_codec == VideoCodec::Hevc ? "hevc" : o.video_codec == VideoCodec::Av1 ? "av1" : "default") + "\n";
 }
 bool write_exclusive(const fs::path& path, const std::string& data, bool allow_collision) {
@@ -188,6 +194,7 @@ void validate_options(const ConversionOptions& options) {
     if (options.quality != QualityPreset::Compact && options.quality != QualityPreset::Balanced && options.quality != QualityPreset::High) invalid();
     if (options.resources != ResourceMode::Economy && options.resources != ResourceMode::Balanced && options.resources != ResourceMode::Fast) invalid();
     if (options.video_acceleration != VideoAcceleration::Auto && options.video_acceleration != VideoAcceleration::Cpu) invalid();
+    if (options.image_metadata != ImageMetadata::Remove && options.image_metadata != ImageMetadata::CaptureDate) invalid();
     if (options.video_codec < VideoCodec::Default || options.video_codec > VideoCodec::Av1) invalid();
     if (options.image_max_dimension > 32768 || options.video_max_height > 8640 || options.video_max_height == 1 ||
         (options.audio_bitrate_kbps && (options.audio_bitrate_kbps < 32 || options.audio_bitrate_kbps > 320)) || options.pdf_dpi < 36 || options.pdf_dpi > 600) invalid();

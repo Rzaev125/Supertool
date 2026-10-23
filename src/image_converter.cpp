@@ -7,6 +7,7 @@
 #include <wrl/client.h>
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <cwctype>
 #include <vector>
 #include <stdexcept>
@@ -82,6 +83,21 @@ private:
     HANDLE file_;
     LONG refs_ = 1;
 };
+// Copy a single semantic value, never an opaque EXIF block. Do not parse
+// offsets/MakerNotes or retain location, device IDs, thumbnails, XMP or stale sizes.
+bool valid_capture_date(const char* text) {
+    if (!text || strnlen_s(text, 21) != 19) return false;
+    for (unsigned i = 0; i < 19; ++i) {
+        const char separator = i == 4 || i == 7 || i == 13 || i == 16 ? ':' : i == 10 ? ' ' : 0;
+        if (separator ? text[i] != separator : text[i] < '0' || text[i] > '9') return false;
+    }
+    auto pair = [&](unsigned i) { return unsigned(text[i] - '0') * 10 + unsigned(text[i + 1] - '0'); };
+    const unsigned year = pair(0) * 100 + pair(2), month = pair(5), day = pair(8);
+    if (!year || month < 1 || month > 12 || pair(11) > 23 || pair(14) > 59 || pair(17) > 59) return false;
+    constexpr unsigned days[]{31,28,31,30,31,30,31,31,30,31,30,31};
+    const bool leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    return day >= 1 && day <= days[month - 1] + (month == 2 && leap ? 1 : 0);
+}
 fs::path normalized(const fs::path& value) { return fs::absolute(value).lexically_normal(); }
 bool same_path(const fs::path& a, const fs::path& b) { return _wcsicmp(a.c_str(), b.c_str()) == 0; }
 }
@@ -131,6 +147,14 @@ void convert_image(const fs::path& input_arg, const fs::path& output_arg, const 
             if (orientation > 8) throw std::runtime_error("Повреждена ориентация EXIF.");
             ComPtr<IWICMetadataQueryReader> metadata;
             if (!orientation_override && SUCCEEDED(decoded->GetMetadataQueryReader(&metadata))) {
+                if (source_container == GUID_ContainerFormatJpeg) {
+                    PROPVARIANT extra{};
+                    const auto status = metadata->GetMetadataByName(L"/[1]app1/ifd", &extra);
+                    PropVariantClear(&extra);
+                    if (SUCCEEDED(status)) throw std::runtime_error("Несколько блоков EXIF JPEG: сначала сохраните фото с единственными метаданными в редакторе.");
+                    if (status != WINCODEC_ERR_PROPERTYNOTFOUND && status != WINCODEC_ERR_PROPERTYNOTSUPPORTED)
+                        require_hr(status, "Не удалось проверить блоки EXIF");
+                }
                 bool found = false;
                 for (auto query : {L"/app1/ifd/{ushort=274}", L"/ifd/{ushort=274}"}) {
                     PROPVARIANT value{};
@@ -144,6 +168,15 @@ void convert_image(const fs::path& input_arg, const fs::path& output_arg, const 
                     } else if (status != WINCODEC_ERR_PROPERTYNOTFOUND && status != WINCODEC_ERR_PROPERTYNOTSUPPORTED)
                         require_hr(status, "Не удалось прочитать ориентацию EXIF");
                 }
+            }
+            std::string capture_date;
+            if (options.image_metadata == ImageMetadata::CaptureDate && (jpeg || tiff) && metadata &&
+                (source_container == GUID_ContainerFormatJpeg || source_container == GUID_ContainerFormatTiff)) {
+                PROPVARIANT date{};
+                const auto query = source_container == GUID_ContainerFormatJpeg ? L"/app1/ifd/exif/{ushort=36867}" : L"/ifd/exif/{ushort=36867}";
+                if (SUCCEEDED(metadata->GetMetadataByName(query, &date)) && date.vt == VT_LPSTR && valid_capture_date(date.pszVal))
+                    capture_date.assign(date.pszVal, 19);
+                PropVariantClear(&date);
             }
             ComPtr<IWICBitmapSource> color_source = decoded;
             if (color != ImageColor::Unmanaged) {
@@ -231,6 +264,12 @@ void convert_image(const fs::path& input_arg, const fs::path& output_arg, const 
                 require_hr(properties->Write(1, &option, &compression), "Не удалось задать сжатие TIFF");
             }
             require_hr(frame->Initialize(properties.Get()), "Не удалось настроить энкодер");
+            if (!capture_date.empty()) {
+                ComPtr<IWICMetadataQueryWriter> writer;
+                require_hr(frame->GetMetadataQueryWriter(&writer), "Не удалось сохранить дату съёмки");
+                PROPVARIANT date{}; date.vt = VT_LPSTR; date.pszVal = capture_date.data();
+                require_hr(writer->SetMetadataByName(jpeg ? L"/app1/ifd/exif/{ushort=36867}" : L"/ifd/exif/{ushort=36867}", &date), "Не удалось записать дату съёмки");
+            }
             require_hr(frame->SetSize(width, height), "Не удалось задать размер результата");
             double dpi_x = 96, dpi_y = 96;
             decoded->GetResolution(&dpi_x, &dpi_y);

@@ -147,6 +147,24 @@ int main() {
         auto invalid_codec=ConversionOptions{};invalid_codec.video_codec=static_cast<VideoCodec>(99);
         rejected([&] { validate_options(invalid_codec); });
     });
+    run("capture date settings, defaults and worker snapshots", [&] {
+        const auto file=root/"metadata.ini";
+        for(const auto mode : {"remove","capture_date"}) {
+            write(file,std::string("version=1\nimage_metadata=")+mode+"\n");
+            auto settings=load_settings(file);
+            const auto saved=root/(std::string(mode)+"-metadata.ini"), snapshot=root/(std::string(mode)+"-metadata.options");
+            save_settings(saved,settings);save_options(snapshot,settings.conversion);
+            const auto field=std::string("image_metadata=")+mode+"\n";
+            check(bytes(saved).find(field)!=std::string::npos && bytes(snapshot).find(field)!=std::string::npos,"metadata mode lost");
+        }
+        write(file,"version=1\n");save_options(root/"legacy-metadata.options",load_options(file));
+        check(bytes(root/"legacy-metadata.options").find("image_metadata=remove\n")!=std::string::npos,"legacy metadata privacy default changed");
+        auto invalid_metadata=ConversionOptions{};invalid_metadata.image_metadata=static_cast<ImageMetadata>(99);
+        rejected([&]{validate_options(invalid_metadata);});
+        for(const auto bad : {"image_metadata=all\n","image_metadata=\n","image_metadata=capture_date --extra\n"}) {
+            write(file,bad);rejected([&]{load_options(file);});
+        }
+    });
     run("resource limits bound CPU workers", [&] {
         check(resource_threads(ResourceMode::Economy) == 1 && resource_threads(ResourceMode::Balanced) == 2, "baseline thread limits changed");
         check(resource_threads(ResourceMode::Fast) >= 1 && resource_threads(ResourceMode::Fast) <= 8, "fast thread count unbounded");
