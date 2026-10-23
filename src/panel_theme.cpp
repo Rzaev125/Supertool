@@ -3,6 +3,9 @@
 #include <algorithm>
 
 namespace shiftwheel::panel_theme {
+bool focus_visible(HWND control) {
+    return (SendMessageW(control,WM_QUERYUISTATE,0,0)&UISF_HIDEFOCUS)==0;
+}
 Palette colors() {
     HIGHCONTRASTW contrast{sizeof(contrast)};
     if (SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof(contrast), &contrast, 0) && (contrast.dwFlags & HCF_HIGHCONTRASTON)) {
@@ -59,7 +62,7 @@ void button(const NMCUSTOMDRAW& item, const Palette& p, HFONT font, UINT dpi, bo
         rect.left+=px(8);rect.right-=px(8);
         text(item.hdc,label.c_str(),rect,font,foreground,DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS);
     }
-    if((item.uItemState&CDIS_FOCUS)!=0) { InflateRect(&rect,-px(3),-px(3));DrawFocusRect(item.hdc,&rect); }
+    if((item.uItemState&CDIS_FOCUS)!=0 && focus_visible(control)) { InflateRect(&rect,-px(3),-px(3));DrawFocusRect(item.hdc,&rect); }
 }
 void combo_border(HWND control, HDC dc, const Palette& p, UINT dpi) {
     const auto px=[dpi](int n){return MulDiv(n,static_cast<int>(dpi),96);};

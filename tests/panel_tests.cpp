@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <filesystem>
 #include <fstream>
+#include <vector>
 
 using namespace shiftwheel;
 namespace {
@@ -49,6 +50,18 @@ void render(HWND window,const std::filesystem::path& path) {
     std::ofstream output(path,std::ios::binary);output.write(reinterpret_cast<const char*>(&file),sizeof(file));
     output.write(reinterpret_cast<const char*>(&info.bmiHeader),sizeof(info.bmiHeader));output.write(static_cast<const char*>(pixels),bytes);
     check(static_cast<bool>(output),"render saved");SelectObject(dc,previous);DeleteObject(bitmap);DeleteDC(dc);
+}
+std::vector<unsigned char> navigation_pixels(HWND window,HWND navigation,UINT state) {
+    BITMAPINFO info{};info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);info.bmiHeader.biWidth=200;
+    info.bmiHeader.biHeight=-48;info.bmiHeader.biPlanes=1;info.bmiHeader.biBitCount=32;info.bmiHeader.biCompression=BI_RGB;
+    const auto dc=CreateCompatibleDC(nullptr);void* pixels=nullptr;
+    const auto bitmap=CreateDIBSection(dc,&info,DIB_RGB_COLORS,&pixels,nullptr,0);check(bitmap&&pixels,"focus render bitmap");
+    const auto previous=SelectObject(dc,bitmap);
+    DRAWITEMSTRUCT item{};item.CtlType=ODT_LISTBOX;item.CtlID=227;item.itemID=4;item.itemAction=ODA_DRAWENTIRE;
+    item.itemState=state;item.hwndItem=navigation;item.hDC=dc;item.rcItem={0,0,200,48};
+    SendMessageW(window,WM_DRAWITEM,227,reinterpret_cast<LPARAM>(&item));GdiFlush();
+    const auto begin=static_cast<const unsigned char*>(pixels);std::vector<unsigned char> result(begin,begin+200*48*4);
+    SelectObject(dc,previous);DeleteObject(bitmap);DeleteDC(dc);return result;
 }
 }
 int main(int argc,char** argv) {
@@ -139,6 +152,19 @@ int main(int argc,char** argv) {
         SendMessageW(window, WM_COMMAND, MAKEWPARAM(227, LBN_SELCHANGE), reinterpret_cast<LPARAM>(nav));
         check(control_text(child(window, Output)) == L"draft remains here", "navigation discarded unsaved edits");
         panel.set_settings(Settings{});
+    });
+    run("mouse hides redundant focus outlines while keyboard focus remains visible", [&] {
+        const auto navigation=child(window,227);
+        const auto previous=SendMessageW(window,WM_QUERYUISTATE,0,0);
+        // The hidden STATIC host does not manage top-level UI state. Send the
+        // notification a normal top-level window receives after an input change.
+        SendMessageW(window,WM_UPDATEUISTATE,MAKEWPARAM(UIS_CLEAR,UISF_HIDEFOCUS),0);
+        const auto selected=navigation_pixels(window,navigation,ODS_SELECTED);
+        check(selected==navigation_pixels(window,navigation,ODS_SELECTED|ODS_FOCUS|ODS_NOFOCUSRECT),"owner draw ignores native hidden-focus flag");
+        check(selected!=navigation_pixels(window,navigation,ODS_SELECTED|ODS_FOCUS),"keyboard focus indicator missing");
+        SendMessageW(window,WM_UPDATEUISTATE,MAKEWPARAM(UIS_SET,UISF_HIDEFOCUS),0);
+        check(selected==navigation_pixels(window,navigation,ODS_SELECTED|ODS_FOCUS),"mouse UI state leaves a focus outline");
+        SendMessageW(window,WM_UPDATEUISTATE,MAKEWPARAM(previous&UISF_HIDEFOCUS?UIS_SET:UIS_CLEAR,UISF_HIDEFOCUS),0);
     });
     run("minimum window height keeps task details above action buttons", [&] {
         panel.show(false,false);

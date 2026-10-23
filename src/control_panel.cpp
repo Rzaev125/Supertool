@@ -752,6 +752,9 @@ struct ControlPanel::Impl {
     static LRESULT CALLBACK control_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam,
                                          UINT_PTR subclass_id, DWORD_PTR reference) {
         auto* self = reinterpret_cast<Impl*>(reference);
+        if(message==WM_LBUTTONDOWN) SendMessageW(self->window,WM_CHANGEUISTATE,MAKEWPARAM(UIS_SET,UISF_HIDEFOCUS),0);
+        if(message==WM_KEYDOWN && (wparam==VK_TAB||wparam==VK_LEFT||wparam==VK_RIGHT||wparam==VK_UP||wparam==VK_DOWN||wparam==VK_HOME||wparam==VK_END||wparam==VK_PRIOR||wparam==VK_NEXT||wparam==VK_SPACE))
+            SendMessageW(self->window,WM_CHANGEUISTATE,MAKEWPARAM(UIS_CLEAR,UISF_HIDEFOCUS),0);
         if (message == WM_SETFOCUS) self->ensure_visible(hwnd);
         if (message == WM_NCDESTROY) RemoveWindowSubclass(hwnd, control_proc, subclass_id);
         wchar_t type[32]{};GetClassNameW(hwnd,type,32);
@@ -829,7 +832,7 @@ struct ControlPanel::Impl {
             const bool active=TabCtrl_GetCurSel(control)==i;
             panel_theme::box(dc,item,active?palette.selection:palette.surface,active?palette.accent:palette.border,px(8));
             panel_theme::text(dc,i?L"Настройки":L"Задачи",item,section_font,active?palette.selected_text:palette.muted,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
-            if(GetFocus()==control&&active) {InflateRect(&item,-px(3),-px(3));DrawFocusRect(dc,&item);}
+            if(GetFocus()==control&&active&&panel_theme::focus_visible(control)) {InflateRect(&item,-px(3),-px(3));DrawFocusRect(dc,&item);}
         }
     }
     void paint_header(HWND control,HDC dc) const {
@@ -865,7 +868,7 @@ struct ControlPanel::Impl {
             }
             panel_theme::text(draw.nmcd.hdc,value,cell,font,selected?palette.selected_text:palette.text);left+=width;
         }
-        if(selected&&GetFocus()==list) {InflateRect(&row,-1,-1);DrawFocusRect(draw.nmcd.hdc,&row);}
+        if(selected&&GetFocus()==list&&panel_theme::focus_visible(list)) {InflateRect(&row,-1,-1);DrawFocusRect(draw.nmcd.hdc,&row);}
         RestoreDC(draw.nmcd.hdc,saved);
     }
     LRESULT draw_item(const DRAWITEMSTRUCT& item) const {
@@ -895,7 +898,7 @@ struct ControlPanel::Impl {
         }
         panel_theme::text(item.hDC,value.c_str(),rect,navigation?section_font:font,
             (item.itemState&ODS_DISABLED)?palette.muted:selected?palette.selected_text:palette.text);
-        if(item.itemState&ODS_FOCUS) {InflateRect(&rect,-px(2),-px(2));DrawFocusRect(item.hDC,&rect);}
+        if((item.itemState&ODS_FOCUS)&&!(item.itemState&ODS_NOFOCUSRECT)&&panel_theme::focus_visible(item.hwndItem)) {InflateRect(&rect,-px(2),-px(2));DrawFocusRect(item.hDC,&rect);}
         return TRUE;
     }
     void refresh_theme() {

@@ -8,6 +8,7 @@ struct Palette {
     bool high_contrast;
 };
 Palette colors();
+bool focus_visible(HWND control);
 void fill(HDC dc, RECT rect, COLORREF color);
 void box(HDC dc, RECT rect, COLORREF background, COLORREF border, int radius);
 void text(HDC dc, const wchar_t* value, RECT rect, HFONT font, COLORREF color,
