@@ -5,7 +5,7 @@ on:
       version:
         description: Version already committed in CMake and resources
         required: true
-        default: '0.11.0'
+        default: '0.14.0'
       publish:
         description: Publish verified packages and then update channels
         type: boolean
@@ -36,6 +36,10 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
+      - name: Check committed release versions
+        run: |
+          python tests/release_config_tests.py
+          if ($LASTEXITCODE) { throw 'Release version declarations or defaults are inconsistent.' }
       - name: Validate release configuration
         run: |
           if ($env:RELEASE_VERSION -notmatch '^\d{1,5}\.\d{1,5}\.\d{1,5}$') { throw 'Invalid version.' }
