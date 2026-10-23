@@ -8,3 +8,5 @@
 /test-output/
 
 /graphify-out/
+
+__pycache__/

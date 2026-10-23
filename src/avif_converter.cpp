@@ -18,7 +18,16 @@ void convert_avif(const fs::path& input, const fs::path& output, Format format, 
         const auto log = work / L"avif-decode.log";
         run_engine(avif_module(false), {L"--jobs", threads, L"--depth", L"8", L"--size-limit", L"40000000",
             L"--dimension-limit", L"32768", L"--index", L"0", L"--", input.wstring(), pixels.wstring()}, log, 120000);
-        if (validate_decoded_avif(log)) color = ImageColor::RequireProfile;
+        const auto info = inspect_decoded_avif(log);
+        if (info.profile) color = ImageColor::RequireProfile;
+        if (info.hdr != HdrTransfer::None) {
+            const auto raw = work / L"hdr-decoded16.png", second_log = work / L"avif-decode16.log";
+            run_engine(avif_module(false), {L"--jobs", threads, L"--depth", L"16", L"--size-limit", L"40000000",
+                L"--dimension-limit", L"32768", L"--index", L"0", L"--", input.wstring(), raw.wstring()}, second_log, 120000);
+            if (inspect_decoded_avif(second_log) != info) throw std::runtime_error("Изменились сведения HDR AVIF при декодировании.");
+            pixels = work / L"hdr-sdr.png";
+            hdr_to_sdr(raw, pixels, info.hdr);
+        }
         // avifdec applies clap -> irot -> imir to PNG pixels and resets EXIF
         // orientation. WIC must not repeat those container transforms.
     }

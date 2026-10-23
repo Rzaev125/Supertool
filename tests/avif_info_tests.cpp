@@ -31,7 +31,25 @@ int main() {
         check(crop, false, "ignored transforms accepted", "Warning, ignoring invalid transforms (clap/irot/imir)\n");
         check(crop, false, "invalid clean aperture accepted", "Invalid clean aperture box\n");
         check(crop, false, "HDR accepted", " * Transfer Char. : 16\n");
+        check(crop, false, "SDR gainmap accepted", " * Gain map       : Present\n");
         check(crop, false, "sequence accepted", "", false);
+        const std::string hdr = " * Bit Depth      : 10\n * Color Primaries: 9\n * Transfer Char. : 16\n * Matrix Coeffs. : 9\n * ICC Profile    : Absent\n * Alpha          : Not premultiplied\n * Gain map       : Absent\n * Transformations: None\n * Frame:\n";
+        auto hdr_check = [&](std::string data, bool accept, const char* name) {
+            { std::ofstream out(log); out << data; }
+            bool accepted = false;
+            try { accepted = shiftwheel::inspect_decoded_avif(log).hdr != shiftwheel::HdrTransfer::None; } catch (const std::runtime_error&) {}
+            if (accepted != accept) throw std::runtime_error(name);
+        };
+        hdr_check(hdr, true, "valid PQ rejected");
+        auto replace = [&](const char* from, const char* to) { auto data = hdr; data.replace(data.find(from), std::string(from).size(), to); return data; };
+        hdr_check(replace("Char. : 16", "Char. : 18"), true, "valid HLG rejected");
+        hdr_check(replace("Depth      : 10", "Depth      : 8"), false, "8bit HDR");
+        hdr_check(replace("Primaries: 9", "Primaries: 1"), false, "non2020 HDR");
+        hdr_check(replace("Coeffs. : 9", "Coeffs. : 1"), false, "unsupported matrix");
+        hdr_check(hdr + " * Transfer Char. : 19\n", false, "ambiguous transfer");
+        hdr_check(replace("Profile    : Absent", "Profile    : Unknown"), false, "unknown ICC state");
+        hdr_check(replace("Gain map       : Absent", "Gain map       : Present"), false, "gainmap HDR");
+        hdr_check(replace("Not premultiplied", "Premultiplied"), false, "premultiplied HDR");
         std::cout << "PASS pinned AVIF diagnostics: transforms, malformed/unknown blocks, ignored warnings, HDR and sequences\n";
         return 0;
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }

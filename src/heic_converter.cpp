@@ -4,6 +4,7 @@
 #include "image_converter.h"
 #include "engines.h"
 #include "module_paths.h"
+#include "image_hdr.h"
 #include <cstdint>
 #include <cstddef>
 #include <cstring>
@@ -115,7 +116,8 @@ void check_exif(const std::vector<unsigned char>& bytes) {
             throw std::runtime_error("Сначала примените поворот EXIF HEIC в редакторе. Повороты контейнера HEIF поддерживаются.");
     }
 }
-bool validate_heic(const fs::path& input) {
+struct HeicInfo { bool profile; HdrTransfer hdr; };
+HeicInfo validate_heic(const fs::path& input) {
     WinHandle file(CreateFileW(input.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
     LARGE_INTEGER size{};
     if (file.value == INVALID_HANDLE_VALUE || !GetFileSizeEx(file.value, &size) || size.QuadPart <= 0 || size.QuadPart > 1024LL * 1024 * 1024)
@@ -140,15 +142,21 @@ bool validate_heic(const fs::path& input) {
     // Alpha and thumbnails are supported. Additional auxiliary images can contain HDR gainmaps or depth.
     if (heif.aux(raw, 2) > 0) throw std::runtime_error("HEIC с картой глубины, HDR gain map или дополнительными каналами пока не поддерживается.");
     if (heif.premultiplied(raw)) throw std::runtime_error("HEIC с предварительно умноженной прозрачностью пока не поддерживается.");
-    if (heif.light_level(raw) || heif.mastering(raw)) throw std::runtime_error("HEIC с метаданными яркости HDR пока не поддерживается. Сначала преобразуйте его в SDR sRGB.");
-    if (heif.bits(raw) != 8) throw std::runtime_error("Поддерживается только 8-битный SDR HEIC. HDR и более высокая точность пока не поддерживаются.");
     const auto profile_size = heif.profile_size(raw);
     if (profile_size > 4 * 1024 * 1024) throw std::runtime_error("Слишком большой цветовой профиль HEIC.");
     Nclx* nclx = nullptr; const auto error = heif.nclx(raw, &nclx);
     std::unique_ptr<Nclx, void(*)(Nclx*)> colors(nclx, heif.free_nclx);
     if (error.code != 0 && error.code != 10) checked(error);
-    if (nclx && (nclx->transfer == 16 || nclx->transfer == 18)) throw std::runtime_error("HDR HEIC пока не поддерживается. Сначала преобразуйте его в SDR sRGB.");
-    if (!profile_size && (!nclx || (nclx->primaries != 1 && nclx->primaries != 2) || (nclx->transfer != 13 && nclx->transfer != 2)))
+    HdrTransfer hdr = HdrTransfer::None;
+    if (nclx && (nclx->transfer == 16 || nclx->transfer == 18)) {
+        if (profile_size || nclx->primaries != 9 || (heif.bits(raw) != 10 && heif.bits(raw) != 12) || (nclx->matrix != 0 && nclx->matrix != 9))
+            throw std::runtime_error("Неподдерживаемый HDR HEIC: нужны 10/12 бит, BT.2020 PQ/HLG без конфликтующего ICC-профиля.");
+        hdr = nclx->transfer == 16 ? HdrTransfer::Pq : HdrTransfer::Hlg;
+    } else {
+        if (heif.light_level(raw) || heif.mastering(raw)) throw std::runtime_error("HEIC с метаданными яркости HDR без PQ/HLG пока не поддерживается.");
+        if (heif.bits(raw) != 8) throw std::runtime_error("Для SDR HEIC поддерживается точность 8 бит; HDR требует BT.2020 PQ/HLG 10/12 бит.");
+    }
+    if (hdr == HdrTransfer::None && !profile_size && (!nclx || (nclx->primaries != 1 && nclx->primaries != 2) || (nclx->transfer != 13 && nclx->transfer != 2)))
         throw std::runtime_error("HEIC использует цветовое пространство без поддерживаемого ICC-профиля. Сначала преобразуйте его в sRGB.");
     uint32_t ids[2]{}; const int metadata_count = heif.metadata_ids(raw, "Exif", ids, 2);
     if (metadata_count > 1) throw std::runtime_error("Несколько блоков EXIF HEIC не поддерживаются.");
@@ -157,7 +165,7 @@ bool validate_heic(const fs::path& input) {
         if (!length || length > 4 * 1024 * 1024) throw std::runtime_error("Повреждены метаданные EXIF HEIC.");
         std::vector<unsigned char> metadata(length); checked(heif.metadata(raw, ids[0], metadata.data())); check_exif(metadata);
     }
-    return profile_size != 0;
+    return {profile_size != 0, hdr};
 }
 }
 void convert_heic(const fs::path& input, const fs::path& output, Format format, const fs::path& work, const ConversionOptions& options) {
@@ -168,11 +176,17 @@ void convert_heic(const fs::path& input, const fs::path& output, Format format, 
     fs::path pixels = input;
     auto color = ImageColor::ToSrgb;
     if (source_format == Format::Heic) {
-        if (validate_heic(input)) color = ImageColor::RequireProfile;
+        const auto info = validate_heic(input);
+        if (info.profile) color = ImageColor::RequireProfile;
         pixels = work / L"heic-decoded.png";
         // Default libheif decoding applies irot, imir and clean-aperture crop before writing PNG.
         run_engine(heic_module(L"heif-dec.exe"), {L"--quiet", L"--codec-threads", threads, L"--tile-threads", L"1",
             input.wstring(), pixels.wstring()}, work / L"heic-decode.log", 120000);
+        if (info.hdr != HdrTransfer::None) {
+            const auto sdr = work / L"heic-hdr-sdr.png";
+            hdr_to_sdr(pixels, sdr, info.hdr);
+            pixels = sdr;
+        }
     } else if (source_format == Format::Avif || source_format == Format::Webp) {
         pixels = work / L"heic-bridge.png";
         if (source_format == Format::Avif) convert_avif(input, pixels, Format::Png, work, options);
