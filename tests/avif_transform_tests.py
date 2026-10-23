@@ -115,9 +115,9 @@ for target in ['jpg', 'bmp']:
     result = pixels(convert(rotated, target))
     assert result.size == expected.size
     # Fully transparent strip moves with the image, and must blend to white.
-    for x, y in [(4, 4), (20, 60)]:
-        if expected.getpixel((x, y))[3] == 0:
-            assert min(result.getpixel((x, y))[:3]) >= 250
+    for x, y in [(4, 90), (20, 80)]:
+        assert expected.getpixel((x, y))[3] == 0
+        assert min(result.getpixel((x, y))[:3]) >= 250
     if target == 'bmp':
         white = Image.new('RGBA', expected.size, 'white')
         compare(root / f'result-{counter}.bmp', Image.alpha_composite(white, expected))

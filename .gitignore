@@ -6,3 +6,5 @@
 *.suo
 
 /test-output/
+
+/graphify-out/
