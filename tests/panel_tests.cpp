@@ -12,7 +12,7 @@ enum : int { Tabs = 100, Headline, Summary, Progress, ProgressText, Jobs, JobDet
     Cancel, Pause, Clear, Open, Retry, Remove,
     Quality = 200, Resources, ImageSize, VideoSize, AudioBitrate, PdfDpi,
     Output, Browse, AutoShow, CategoryChoice, Formats, MoveUp, MoveDown,
-    Apply, Defaults, SettingsError, PdfOcr, OcrEnglish, OcrRussian, OcrAzerbaijani, Acceleration, Startup, AutoUpdate, UpdateChannel, UpdateLabel };
+    Apply, Defaults, SettingsError, PdfOcr, OcrEnglish, OcrRussian, OcrAzerbaijani, Acceleration, Startup, AutoUpdate, UpdateChannel, UpdateLabel, Codec=320 };
 void check(bool value, const char* message) { if (!value) throw std::runtime_error(message); }
 HWND child(HWND parent, int id) {
     struct Search { int id; HWND result = nullptr; } search{id};
@@ -219,6 +219,9 @@ int main(int argc,char** argv) {
     });
     run("OCR languages and presentation category persist in settings", [&] {
         panel.set_settings(Settings{}); panel.show(true, false);
+        check(SendMessageW(child(window, Codec), CB_GETCOUNT, 0, 0) == 4, "codec choices exist");
+        check(SendMessageW(child(window, Codec), CB_GETCURSEL, 0, 0) == 0, "legacy codec default selected");
+        SendMessageW(child(window, Codec), CB_SETCURSEL, 3, 0);
         check(SendMessageW(child(window, Acceleration), CB_GETCOUNT, 0, 0) == 2, "video auto/CPU choices exist");
         check(SendMessageW(child(window, Acceleration), CB_GETCURSEL, 0, 0) == 0, "automatic acceleration enabled by default");
         check(SendMessageW(child(window, PdfOcr), BM_GETCHECK, 0, 0) == BST_CHECKED, "OCR enabled by default");
@@ -234,8 +237,13 @@ int main(int argc,char** argv) {
         click(child(window, Apply));
         check(saved == before + 1 && !saved_settings.conversion.pdf_ocr && saved_settings.conversion.ocr_languages == "aze", "OCR settings saved");
         check(saved_settings.conversion.video_acceleration == VideoAcceleration::Cpu, "CPU-only setting saved");
+        check(saved_settings.conversion.video_codec == VideoCodec::Av1, "AV1 choice saved");
         panel.set_settings(saved_settings);
         check(SendMessageW(child(window, Acceleration), CB_GETCURSEL, 0, 0) == 1, "CPU-only choice restored");
+        check(SendMessageW(child(window, Codec), CB_GETCURSEL, 0, 0) == 3, "AV1 choice restored");
+        SendMessageW(child(window, Codec), CB_SETCURSEL, static_cast<WPARAM>(-1), 0);
+        click(child(window, Apply)); check(saved == before + 1, "empty codec rejected");
+        panel.set_settings(saved_settings);
         SendMessageW(child(window, Acceleration), CB_SETCURSEL, static_cast<WPARAM>(-1), 0);
         click(child(window, Apply)); check(saved == before + 1, "empty acceleration choice rejected");
         panel.set_settings(Settings{});

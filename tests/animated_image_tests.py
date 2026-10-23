@@ -1,5 +1,5 @@
 """Real GIF/WebP timelines, compositing and rejection, inspected independently with Pillow."""
-import argparse,pathlib,subprocess,tempfile,hashlib,struct
+import argparse,pathlib,subprocess,tempfile,hashlib,struct,io
 from PIL import Image,ImageDraw,ImageSequence
 p=argparse.ArgumentParser();p.add_argument('--exe',required=True,type=pathlib.Path);a=p.parse_args();exe=a.exe.resolve()
 root=pathlib.Path(tempfile.mkdtemp(prefix='animated-images-',dir=pathlib.Path.cwd()/'test-output'))
@@ -55,6 +55,42 @@ semi=frames.copy();semi[0]=Image.new('RGBA',(48,32),(60,80,200,127));semi[1]=Ima
 partial=root/'partial.webp';semi[0].save(partial,save_all=True,append_images=semi[1:],duration=[50,100,150],loop=0,lossless=True)
 assert inspect(convert(partial,'webp'))[0][0].getpixel((0,0))[3]==127
 assert inspect(convert(partial,'gif'))[0][0].getpixel((0,0))[3]==0
+# Explicit ANMF subrectangles: blend over prior alpha, with overlapping offsets.
+# Build the container ourselves so Pillow cannot optimize away the blend flags.
+def chunk(tag,payload):return tag+struct.pack('<I',len(payload))+payload+b'\0'*(len(payload)%2)
+def u24(n):return n.to_bytes(3,'little')
+def frame_chunk(im,x,y,delay,flags):
+ stream=io.BytesIO();im.save(stream,format='WEBP',lossless=True,exact=True)
+ data=stream.getvalue();pos=12;payload=b''
+ while pos<len(data):
+  size=struct.unpack_from('<I',data,pos+4)[0];end=pos+8+size+(size%2)
+  if data[pos:pos+4] in [b'ALPH',b'VP8 ',b'VP8L']:payload+=data[pos:end]
+  pos=end
+ header=u24(x//2)+u24(y//2)+u24(im.width-1)+u24(im.height-1)+u24(delay)+bytes([flags])
+ return chunk(b'ANMF',header+payload)
+base=Image.new('RGBA',(12,10),(40,80,120,160))
+patches=[(Image.new('RGBA',(6,4),(220,20,100,128)),2,2),(Image.new('RGBA',(4,4),(20,220,100,64)),6,4)]
+expected=[base.copy()]
+for patch,x,y in patches:
+ overlay=Image.new('RGBA',base.size);overlay.paste(patch,(x,y))
+ expected.append(Image.alpha_composite(expected[-1],overlay))
+def blend_fixture(path,no_blend=False):
+ body=b'WEBP'+chunk(b'VP8X',b'\x12\0\0\0'+u24(11)+u24(9))+chunk(b'ANIM',b'\0'*4+struct.pack('<H',3))
+ body+=frame_chunk(base,0,0,70,2)
+ for (patch,x,y),delay in zip(patches,[130,290]):body+=frame_chunk(patch,x,y,delay,2 if no_blend else 0)
+ path.write_bytes(b'RIFF'+struct.pack('<I',len(body))+body)
+def same_composite(actual,expected,tolerance=0):
+ return len(actual)==len(expected) and all(f.size==g.size and all(all(abs(a-b)<=tolerance for a,b in zip(x,y)) for x,y in zip(f.get_flattened_data(),g.get_flattened_data())) for f,g in zip(actual,expected))
+blend=root/'blend-offset.webp';blend_fixture(blend)
+decoded=inspect(blend)[0]
+# libwebp truncates integer blend math; Pillow alpha_composite rounds. Two
+# overlapping blends can accumulate two levels. Round-trip comparison is exact.
+assert same_composite(decoded,expected,2),'independent alpha-over fixture oracle'
+blended,times,loop=inspect(convert(blend,'webp'))
+assert same_composite(blended,decoded) and times==[70,130,290] and loop==3,'all composited blend frames/timing/loop'
+mutant=root/'no-blend-mutant.webp';blend_fixture(mutant,True)
+assert not same_composite(inspect(convert(mutant,'webp'))[0],expected,2),'blend test must detect replacement instead of alpha-over'
+print('PASS explicit WebP blend: every pixel of all offset/overlapping frames and no-blend mutation',flush=True)
 # Restore-previous disposal is composited before re-encoding.
 restore=root/'restore.gif';frames[0].save(restore,save_all=True,append_images=frames[1:],duration=[50,100,150],loop=0,disposal=[1,3,2],transparency=0)
 actual=inspect(convert(restore,'webp'))[0]

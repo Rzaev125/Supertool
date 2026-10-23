@@ -128,6 +128,25 @@ int main() {
             write(file, text); rejected([&] { load_options(file); });
         }
     });
+    run("video codec settings and immutable worker snapshots", [&] {
+        const auto file = root / "codec.ini";
+        for (const auto codec : {"default", "h264", "hevc", "av1"}) {
+            write(file, std::string("version=1\nvideo_codec=") + codec + "\n");
+            auto settings = load_settings(file);
+            const auto saved = root / (std::string(codec) + "-codec-saved.ini");
+            const auto snapshot = root / (std::string(codec) + "-codec.options");
+            save_settings(saved, settings); save_options(snapshot, settings.conversion);
+            const auto field = std::string("video_codec=") + codec + "\n";
+            check(bytes(saved).find(field) != std::string::npos && bytes(snapshot).find(field) != std::string::npos, "selected codec lost");
+        }
+        write(file, "version=1\n"); save_options(root / "legacy-codec.options", load_options(file));
+        check(bytes(root / "legacy-codec.options").find("video_codec=default\n") != std::string::npos, "legacy codec default changed");
+        for (const auto text : {"video_codec=vp9\n", "video_codec=\n", "video_codec=av1 --extra\n"}) {
+            write(file, text); rejected([&] { load_options(file); });
+        }
+        auto invalid_codec=ConversionOptions{};invalid_codec.video_codec=static_cast<VideoCodec>(99);
+        rejected([&] { validate_options(invalid_codec); });
+    });
     run("resource limits bound CPU workers", [&] {
         check(resource_threads(ResourceMode::Economy) == 1 && resource_threads(ResourceMode::Balanced) == 2, "baseline thread limits changed");
         check(resource_threads(ResourceMode::Fast) >= 1 && resource_threads(ResourceMode::Fast) <= 8, "fast thread count unbounded");
