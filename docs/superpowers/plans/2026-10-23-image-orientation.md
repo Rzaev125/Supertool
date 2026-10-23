@@ -32,31 +32,31 @@
 
 **Files:** src/image_converter.h/.cpp, src/webp_converter.cpp, tests/image_orientation_tests.py, tests/conversion_tests.py, CMakeLists.txt.
 
-- [ ] Add real fixtures covering all eight JPEG/TIFF/WebP orientations against independently transformed decoded pixels, alpha, resize, bridge output, malformed EXIF, source hashes and no temp leaks.
-- [ ] Run new Python test against current executable. Expected: fails on orientation 2 because current product refuses it.
-- [ ] Implement validated WIC orientation and rotation before resize; swap DPI axes. Explicit override is worker-internal and only for validated WebP orientation.
-- [ ] Update the old TIFF rotation-refusal case to verify dimensions.
-- [ ] Build and run images, conversion_formats, conversion_animated_images, conversion_heic, conversion_avif and new image_orientation. Expected: all pass.
-- [ ] Commit implementation and record task completion.
+- [x] Add real fixtures covering all eight JPEG/TIFF/WebP orientations against independently transformed decoded pixels, alpha, resize, bridge output, malformed EXIF, source hashes and no temp leaks.
+- [x] Run new Python test against current executable. Expected: fails on orientation 2 because current product refuses it.
+- [x] Implement validated WIC orientation and rotation before resize; swap DPI axes. Explicit override is worker-internal and only for validated WebP orientation.
+- [x] Update the old TIFF rotation-refusal case to verify dimensions.
+- [x] Build and run images, conversion_formats, conversion_animated_images, conversion_heic, conversion_avif and new image_orientation. Expected: all pass.
+- [x] Commit implementation and record task completion.
 
 ### Task 2: Explicit capture-date choice
 
 **Files:** src/options.h/.cpp, src/job_store.cpp, src/control_panel.cpp, src/image_converter.cpp, tests/options_tests.cpp, tests/job_store_tests.cpp, tests/panel_tests.cpp, tests/image_orientation_tests.py.
 
-- [ ] Add failing persistence/UI/date tests. Expected: old parser rejects image_metadata=capture_date and old executable loses the date.
-- [ ] Add ImageMetadata {Remove, CaptureDate}, INI image_metadata=remove|capture_date with strict validation; snapshot same field. Save SWQ3 and read SWQ1/2 defaults.
-- [ ] Add stable-ID settings combo with text clearly limiting capture date to JPEG/TIFF, scrollable layout, defaults, save/restore and invalid-selection refusal.
-- [ ] Copy only a bounded, valid ASCII EXIF DateTimeOriginal via WIC reader/writer for direct JPEG/TIFF pairs. Strip remains default; orientation tag is never copied.
-- [ ] Run options, job_store, panel_contract and image_orientation. Expected: pass; commit and record.
+- [x] Add failing persistence/UI/date tests. Expected: old parser rejects image_metadata=capture_date and old executable loses the date.
+- [x] Add ImageMetadata {Remove, CaptureDate}, INI image_metadata=remove|capture_date with strict validation; snapshot same field. Save SWQ3 and read SWQ1/2 defaults.
+- [x] Add stable-ID settings combo with text clearly limiting capture date to JPEG/TIFF, scrollable layout, defaults, save/restore and invalid-selection refusal.
+- [x] Copy only a bounded, valid ASCII EXIF DateTimeOriginal via WIC reader/writer for direct JPEG/TIFF pairs. Strip remains default; orientation tag is never copied.
+- [x] Run options, job_store, panel_contract and image_orientation. Expected: pass; commit and record.
 
 ### Task 3: Verify and document
 
 **Files:** README.md, docs/image-orientation.md, docs/acceptance-0.12.0.md, docs/review-0.12.0.md, roadmap; version files when identifying local 0.12 preview build.
 
-- [ ] Run full CTest suite sequentially from D with workspace-local TEMP/TMP. Expected: all pass, no source C paths in active CMake cache.
-- [ ] Record exact coverage, metadata scope, unsupported HEIC/AVIF EXIF/container cases, and manual Explorer/VM limitations. Keep metadata roadmap partial where full transfer is unimplemented.
-- [ ] Commit and prepare the whole-branch review package. Final review is the workflow gate after task completion.
-- [ ] Finish with exact deletion status and local build/test result. No claim that old C was deleted if its atomic rename remains blocked.
+- [x] Run full CTest suite sequentially from D with workspace-local TEMP/TMP. Expected: all pass, no source C paths in active CMake cache.
+- [x] Record exact coverage, metadata scope, unsupported HEIC/AVIF EXIF/container cases, and manual Explorer/VM limitations. Keep metadata roadmap partial where full transfer is unimplemented.
+- [x] Commit and prepare the whole-branch review package. Final review is the workflow gate after task completion.
+- [x] Finish with exact deletion status and local build/test result. No claim that old C was deleted if its atomic rename remains blocked.
 
 ## Final gate
 

@@ -18,3 +18,5 @@ HEIC применяет собственные трансформации кон
 Настройка включена в отдельный неизменяемый INI снимок задания (`image_metadata=remove|capture_date`). Очередь записывается в SWQ3; SWQ1/SWQ2 читаются с режимом удаления. Старые версии приложения SWQ3 не читают — не используйте для них одно хранилище очереди одновременно с 0.12.
 
 Пути WIC DateTimeOriginal и тип VT_LPSTR сверены с [Microsoft: metadata queries](https://learn.microsoft.com/en-us/windows/win32/wic/-wic-native-image-format-metadata-queries) и [DateTaken policy](https://learn.microsoft.com/en-us/windows/win32/wic/-wic-photoprop-system-photo-datetaken). Переносится конкретный EXIF-тег, а не reconciled System.Photo.DateTaken и не весь EXIF-блок.
+
+При возврате к 0.11 и ниже старый парсер INI также не знает `image_metadata`: заранее сохраните копии INI и очереди; после закрытия приложения используйте старый INI либо удалите только строку `image_metadata` из копии настроек. SWQ3 старым приложением не открывайте. Новый 0.12 читает старые INI без сброса параметров.
