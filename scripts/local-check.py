@@ -41,8 +41,11 @@ def base_directory(root):
 @contextmanager
 def lock_run(workspace):
     lock = workspace / '.run-lock'
-    if lock.exists() and lock.lstat().st_file_attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT:
-        raise ValueError('Reparse point in workspace lock.')
+    try:
+        if lock.lstat().st_file_attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT:
+            raise ValueError('Reparse point in workspace lock.')
+    except FileNotFoundError:
+        pass
     with lock.open('a+b') as handle:
         if not handle.tell():
             handle.write(b'1')
@@ -59,7 +62,7 @@ def lock_run(workspace):
 def owned_run(root, workspace):
     base = base_directory(root)
     workspace = assert_local(root, workspace)
-    if workspace.parent != base / 'runs' or not re.fullmatch('[a-f0-9]{32}', workspace.name):
+    if workspace.parent != base / 'runs' or not re.fullmatch('(?:[a-f0-9]{12}|[a-f0-9]{32})', workspace.name):
         raise ValueError('Not a local-check workspace.')
     marker = assert_local(root, workspace / MARKER)
     try:
@@ -79,7 +82,15 @@ def remove_run(root, workspace):
             assert_local(root, Path(directory) / name)
     with lock_run(workspace):
         pass  # A running check holds this lock. Do not remove a live workspace.
-    shutil.rmtree(workspace)
+    def retry_readonly(function, path, error):
+        # Office may leave hidden read-only lock files. Only retry deletion of
+        # checked, owned regular files; a sharing violation still fails safely.
+        checked = assert_local(root, path)
+        if function != os.unlink or not isinstance(error[1], PermissionError) or not checked.is_file():
+            raise error[1]
+        os.chmod(checked, stat.S_IREAD | stat.S_IWRITE)
+        function(checked)
+    shutil.rmtree(workspace, onerror=retry_readonly)
 
 
 def cleanup_runs(root, apply=False):
@@ -135,17 +146,27 @@ def bracket(value):
 
 
 def run_checks(root, build, suite, configuration, ctest):
+    base = base_directory(root)
+    base.mkdir(parents=True, exist_ok=True)
+    # Serialize checks publishing the project's latest report; cleanup stays independent.
+    with lock_run(base):
+        return execute_checks(root, build, suite, configuration, ctest)
+
+
+def execute_checks(root, build, suite, configuration, ctest):
     root, build = Path(root).absolute(), Path(build).absolute()
     assert_local(root, build)
     base = base_directory(root)
     runs = assert_local(root, base / 'runs')
     runs.mkdir(parents=True, exist_ok=True)
-    workspace = runs / uuid.uuid4().hex
+    # LibreOffice silently fails with deeply nested private profile paths. Keep
+    # random ownership names compact; mkdir still refuses any collision.
+    workspace = runs / uuid.uuid4().hex[:12]
     workspace.mkdir()
     report = dict(status='failed', suite=suite, executed=[], skipped=[], workspace=str(workspace), fixtures_removed=False)
-    log = assert_local(root, base / 'check.log')
-    junit = assert_local(root, base / 'results.xml')
-    report_path = assert_local(root, base / 'report.json')
+    log = assert_local(root, workspace / 'check.log')
+    junit = assert_local(root, workspace / 'results.xml')
+    report_path = assert_local(root, workspace / 'report.json')
     log.write_text('Preparing local checks.\n', encoding='utf-8')
     if junit.exists():
         junit.unlink()
@@ -162,7 +183,7 @@ def run_checks(root, build, suite, configuration, ctest):
             if not wanted:
                 raise ValueError('Missing tests in configured build.')
             tests = [t for t in tests if t['name'] in wanted]
-            if suite == 'full' and tray_running():
+            if suite == 'full' and any(t['name']=='application_smoke' for t in tests) and tray_running():
                 tests = [t for t in tests if t['name'] != 'application_smoke']
                 report['skipped'].append(dict(name='application_smoke', reason='Running tray instance is preserved; test needs a separate session.'))
             lines = []
@@ -187,6 +208,7 @@ def run_checks(root, build, suite, configuration, ctest):
             env = os.environ.copy()
             env['TEMP'] = env['TMP'] = str(workspace / 'temp')
             env['SHIFTWHEEL_TEST_ARTIFACT_ROOT'] = str(workspace)
+            env['SHIFTWHEEL_OFFLINE'] = '1'
             print('Local check: ' + suite + ' (' + str(len(tests)) + ' test groups)', flush=True)
             with log.open('w', encoding='utf-8') as output:
                 result = subprocess.run([str(ctest), '--test-dir', str(workspace), '-C', configuration, '--verbose', '--output-junit', str(junit)],
@@ -205,11 +227,24 @@ def run_checks(root, build, suite, configuration, ctest):
             report.update(error=str(error), exit_code=1)
             with log.open('a', encoding='utf-8') as output:
                 output.write('\nLocal check error: ' + str(error) + '\n')
-    if report['status'] == 'passed':
-        remove_run(root, workspace)
-        report['fixtures_removed'] = True
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
-    print(report['status'].upper() + ': ' + str(report_path), flush=True)
+    # Failed runs retain their authoritative log/JUnit/report even after later checks.
+    for name in ['check.log', 'results.xml']:
+        latest = assert_local(root, base / name)
+        if (workspace / name).exists():
+            shutil.copyfile(workspace / name, latest)
+        elif latest.exists():
+            latest.unlink()
+    if report['status'] == 'passed':
+        try:
+            remove_run(root, workspace)
+            report['fixtures_removed'] = True
+        except (OSError, ValueError) as error:
+            report.update(status='failed', error='Fixture cleanup failed: '+str(error), exit_code=1)
+            report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+    latest_report = assert_local(root, base / 'report.json')
+    latest_report.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+    print(report['status'].upper() + ': ' + str(latest_report), flush=True)
     if report['status'] != 'passed':
         print('Diagnostic workspace retained: ' + str(workspace), flush=True)
     return report['exit_code']

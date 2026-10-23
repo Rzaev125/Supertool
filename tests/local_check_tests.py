@@ -41,6 +41,19 @@ class LocalCheckTests(unittest.TestCase):
         self.assertEqual(report['executed'], ['conversion_smoke'])
         self.assertTrue(report['fixtures_removed'])
 
+    def test_workspace_name_leaves_room_for_libreoffice_profile_paths(self):
+        self.assertEqual(self.run_checks(), 0)
+        report = json.loads((self.build / 'local-check/report.json').read_text())
+        self.assertLessEqual(len(Path(report['workspace']).name), 12)
+
+    def test_success_removes_readonly_files_created_by_office(self):
+        (self.root / 'fixture.py').write_text(
+            "from pathlib import Path\nimport os, stat\n"
+            "p=Path('office-lock');p.write_text('fixture')\n"
+            "os.chmod(p,stat.S_IREAD)\n")
+        self.assertEqual(self.run_checks(), 0)
+        self.assertEqual(list((self.build / 'local-check/runs').iterdir()), [])
+
     def test_failure_keeps_diagnostics_then_explicit_cleanup_removes_only_owned_run(self):
         (self.root / 'fixture.py').write_text("from pathlib import Path\nPath('diagnostic-input.txt').write_text('keep for investigation')\nraise SystemExit(7)\n")
         self.assertNotEqual(self.run_checks(), 0)
@@ -81,7 +94,7 @@ class LocalCheckTests(unittest.TestCase):
         # Pass paths as PowerShell arguments, never shell-interpolated strings.
         script = self.root / 'link.ps1'
         script.write_text(command)
-        subprocess.run(['powershell', '-NoProfile', '-File', str(script), str(link), str(target)], check=True, capture_output=True)
+        subprocess.run(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script), str(link), str(target)], check=True, capture_output=True)
         try:
             with self.assertRaises(ValueError):
                 self.api.remove_run(self.root, workspace)
@@ -115,6 +128,28 @@ class LocalCheckTests(unittest.TestCase):
             self.assertEqual(self.api.cleanup_runs(self.root, apply=True), [])
             self.assertTrue(workspace.exists())
         self.api.remove_run(self.root, workspace)
+
+    def test_failed_evidence_survives_the_next_successful_run(self):
+        fixture = self.root / 'fixture.py'
+        fixture.write_text("print('unique failure evidence')\nraise SystemExit(3)\n")
+        self.assertNotEqual(self.run_checks(), 0)
+        failed = json.loads((self.build / 'local-check/report.json').read_text())
+        workspace = Path(failed['workspace'])
+        self.assertTrue((workspace / 'report.json').is_file(), 'failure report must belong to its retained workspace')
+        self.assertIn('unique failure evidence', (workspace / 'check.log').read_text())
+        self.assertTrue((workspace / 'results.xml').is_file())
+        fixture.write_text("print('next successful check')\n")
+        self.assertEqual(self.run_checks(), 0)
+        self.assertEqual(json.loads((workspace / 'report.json').read_text())['status'], 'failed')
+        self.assertIn('unique failure evidence', (workspace / 'check.log').read_text())
+
+    def test_second_check_cannot_overwrite_a_running_checks_latest_report(self):
+        self.assertEqual(self.run_checks(), 0)
+        report = (self.build / 'local-check/report.json').read_bytes()
+        with self.api.lock_run(self.build / 'local-check'):
+            with self.assertRaises(OSError):
+                self.run_checks()
+        self.assertEqual((self.build / 'local-check/report.json').read_bytes(), report)
 
 
 if __name__ == '__main__':
