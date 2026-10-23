@@ -2,7 +2,8 @@ param([Parameter(Mandatory=$true)][string]$Executable)
 $ErrorActionPreference='Stop'
 Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1') -Force
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$work=Join-Path $root ('build\module-fixture-'+[Guid]::NewGuid().ToString('N'))
+. (Join-Path $PSScriptRoot 'test-artifacts.ps1')
+$work=Join-Path (Get-TestArtifactRoot $root) ('module-fixture-'+[Guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($work)
 [IO.File]::WriteAllText((Join-Path $work 'file.txt'),'fixture',[Text.Encoding]::ASCII)
 $hash=(Get-FileHash -LiteralPath (Join-Path $work 'file.txt') -Algorithm SHA256).Hash.ToLowerInvariant()

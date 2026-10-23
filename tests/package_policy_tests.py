@@ -1,8 +1,8 @@
 """Exercise actual packaging entry points on tiny isolated release trees."""
-import hashlib,json,pathlib,shutil,subprocess,uuid,re
+import hashlib,json,pathlib,shutil,subprocess,uuid,re,os
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 VERSION=re.search(r'project\(ShiftWheel VERSION ([0-9.]+)',(ROOT/'CMakeLists.txt').read_text()).group(1)
-WORK=ROOT/'build'/('package-policy-'+uuid.uuid4().hex)
+WORK=pathlib.Path(os.environ.get('SHIFTWHEEL_TEST_ARTIFACT_ROOT',str(ROOT/'build')))/('package-policy-'+uuid.uuid4().hex)
 def digest(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 def run(script,*args):
  return subprocess.run(['powershell','-NoProfile','-ExecutionPolicy','Bypass','-File',str(script),*map(str,args)],capture_output=True,creationflags=subprocess.CREATE_NO_WINDOW)
@@ -46,7 +46,14 @@ for kind,requested,metadata in [('full-labelled-core','core','full'),('core-labe
  if metadata is not None:release['distribution']=metadata
  (p/'release.json').write_text(json.dumps(release))
  isolated=ROOT/'build/installer-tests'/(WORK.name+'-'+kind)
+ assert not isolated.exists(),'test requires a fresh isolated destination'
  r=run(ROOT/'scripts/build-installer.ps1','-Version',VERSION,'-Distribution',requested,'-PayloadDirectory',p,'-TestRoot',isolated)
+ # Installer TestRoot is deliberately restricted to build/installer-tests.
+ # Move our own output into this check's workspace before releasing that slot.
+ if isolated.exists():
+  assert isolated.resolve().parent==(ROOT/'build/installer-tests').resolve()
+  shutil.copytree(isolated,WORK/('installer-result-'+kind))
+  shutil.rmtree(isolated)
  ok=r.returncode==0 if kind=='valid-core' else r.returncode!=0 and b'distribution' in (r.stdout+r.stderr).lower()
  if not ok:failures.append(kind+': distribution contract not enforced')
  print(kind,'PASS' if ok else 'FAIL',flush=True)

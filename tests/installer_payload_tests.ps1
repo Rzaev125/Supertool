@@ -2,7 +2,8 @@ param([switch]$TestReparsePoints)
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1') -Force
 $root = Split-Path $PSScriptRoot -Parent
-$work = Join-Path $root ('build\installer-payload-test-' + [Guid]::NewGuid().ToString('N'))
+. (Join-Path $PSScriptRoot 'test-artifacts.ps1')
+$work = Join-Path (Get-TestArtifactRoot $root) ('installer-payload-test-' + [Guid]::NewGuid().ToString('N'))
 $source = Join-Path $work 'input'
 New-Item -ItemType Directory -Path (Join-Path $source 'modules\ffmpeg'),(Join-Path $source 'docs') -Force | Out-Null
 [IO.File]::WriteAllText((Join-Path $source 'ShiftWheel.exe'), 'binary fixture')
