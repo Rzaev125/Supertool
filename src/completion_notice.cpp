@@ -5,11 +5,19 @@
 #include <shellscalingapi.h>
 #include <windowsx.h>
 #include <algorithm>
+#include <cmath>
 
 namespace shiftwheel {
 namespace {
 constexpr int brand_id = 100, title_id = 101, message_id = 102, open_id = 103, close_id = 104;
 constexpr UINT_PTR expiry_timer = 1;
+constexpr UINT_PTR frame_timer = 2;
+constexpr double appear_ms = 180, disappear_ms = 140;
+double now_ms() {
+    static const double frequency = [] { LARGE_INTEGER value; QueryPerformanceFrequency(&value); return static_cast<double>(value.QuadPart); }();
+    LARGE_INTEGER value; QueryPerformanceCounter(&value);
+    return static_cast<double>(value.QuadPart) * 1000.0 / frequency;
+}
 }
 CompletionNotice::~CompletionNotice() { shutdown(); }
 bool CompletionNotice::initialize(HINSTANCE instance, HWND owner, std::function<void(std::filesystem::path)> closed) {
@@ -18,7 +26,7 @@ bool CompletionNotice::initialize(HINSTANCE instance, HWND owner, std::function<
     WNDCLASSW cls{}; cls.lpfnWndProc = window_proc; cls.hInstance = instance;
     cls.lpszClassName = L"ShiftWheel.CompletionNotice"; cls.hCursor = LoadCursorW(nullptr, IDC_ARROW); cls.style = CS_DROPSHADOW;
     if (!RegisterClassW(&cls) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return false;
-    window_ = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, cls.lpszClassName,
+    window_ = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED, cls.lpszClassName,
         L"ShiftWheel — конвертация завершена", WS_POPUP, 0, 0, 400, 188, owner, nullptr, instance, this);
     if (!window_) return false;
     auto control = [&](int id, const wchar_t* type, const wchar_t* text, DWORD style) {
@@ -72,26 +80,69 @@ bool CompletionNotice::show(const TrayNotification& notification) {
         SendMessageW(window_, WM_CHANGEUISTATE, MAKEWPARAM(UIS_SET, UISF_HIDEFOCUS), 0);
         DWORD seconds = 10; SystemParametersInfoW(SPI_GETMESSAGEDURATION, 0, &seconds, 0);
         if (!SetTimer(window_, expiry_timer, std::clamp<DWORD>(seconds, 10, 300) * 1000, nullptr)) return false;
+        SetWindowLongPtrW(window_, GWL_EXSTYLE, GetWindowLongPtrW(window_, GWL_EXSTYLE) & ~WS_EX_TRANSPARENT);
+        EnableWindow(GetDlgItem(window_, open_id), TRUE); EnableWindow(GetDlgItem(window_, close_id), TRUE);
+        closing_ = false; open_on_close_ = false;
+        update_animation_setting();
+        opacity_.snap(0); opacity_.aim(1, now_ms(), animations_ ? appear_ms : 0);
         visible_ = true;
+        // Apply the first alpha before showing to avoid a stale opaque frame.
+        animate();
         SetWindowPos(window_, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
         RedrawWindow(window_, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW);
         return true;
     } catch (...) { hide(); return false; }
 }
 void CompletionNotice::hide() {
-    visible_ = false;
-    if (window_) { KillTimer(window_, expiry_timer); ShowWindow(window_, SW_HIDE); }
+    visible_ = false; closing_ = false; open_on_close_ = false;
+    if (window_) {
+        KillTimer(window_, expiry_timer);
+        if (animation_timer_) KillTimer(window_, animation_timer_);
+        ShowWindow(window_, SW_HIDE);
+    }
+    animation_timer_ = 0; opacity_.snap(0);
     folder_.clear();
 }
 void CompletionNotice::dismiss(bool open) {
-    if (!visible_) return;
-    auto folder = open ? folder_ : std::filesystem::path{};
+    if (!visible_ || closing_) return;
+    closing_ = true; open_on_close_ = open;
+    KillTimer(window_, expiry_timer);
+    EnableWindow(GetDlgItem(window_, open_id), FALSE); EnableWindow(GetDlgItem(window_, close_id), FALSE);
+    SetWindowLongPtrW(window_, GWL_EXSTYLE, GetWindowLongPtrW(window_, GWL_EXSTYLE) | WS_EX_TRANSPARENT);
+    opacity_.aim(0, now_ms(), animations_ ? disappear_ms : 0);
+    animate();
+}
+void CompletionNotice::finish_dismiss() {
+    auto folder = open_on_close_ ? folder_ : std::filesystem::path{};
     hide();
     if (closed_) closed_(std::move(folder));
+}
+void CompletionNotice::update_animation_setting() {
+    BOOL enabled = TRUE; SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &enabled, 0);
+    animations_ = enabled != FALSE;
+    if (!animations_) opacity_.snap(opacity_.to);
+}
+void CompletionNotice::animate() {
+    if (!window_ || !visible_) return;
+    const auto now = now_ms();
+    const auto alpha = static_cast<int>(std::lround(opacity_.value(now) * 255));
+    if (alpha != last_alpha_) {
+        SetLayeredWindowAttributes(window_, 0, static_cast<BYTE>(alpha), LWA_ALPHA); last_alpha_ = alpha;
+    }
+    if (opacity_.active(now)) {
+        if (!animation_timer_) {
+            animation_timer_ = SetTimer(window_, frame_timer, 16, nullptr);
+            if (!animation_timer_) { opacity_.snap(opacity_.to); animate(); }
+        }
+    } else {
+        if (animation_timer_) { KillTimer(window_, animation_timer_); animation_timer_ = 0; }
+        if (closing_) finish_dismiss();
+    }
 }
 void CompletionNotice::shutdown() {
     hide();
     if (window_) { DestroyWindow(window_); window_ = nullptr; }
+    last_alpha_ = -1;
     if (font_) { DeleteObject(font_); font_ = nullptr; }
     if (title_font_) { DeleteObject(title_font_); title_font_ = nullptr; }
     closed_ = {};
@@ -140,7 +191,8 @@ LRESULT CALLBACK CompletionNotice::window_proc(HWND window, UINT message, WPARAM
         }
         break;
     case WM_TIMER:
-        if (w == expiry_timer && self->visible_) {
+        if (self->animation_timer_ && w == self->animation_timer_) { self->animate(); return 0; }
+        if (w == expiry_timer && self->visible_ && !self->closing_) {
             RECT rect{}; POINT pointer{}; GetWindowRect(window, &rect); GetCursorPos(&pointer);
             const auto focus = GetFocus();
             const bool keyboard = GetForegroundWindow() == window && (focus == window || IsChild(window, focus));
@@ -150,6 +202,7 @@ LRESULT CALLBACK CompletionNotice::window_proc(HWND window, UINT message, WPARAM
     case WM_KEYDOWN: if (w == VK_ESCAPE) { self->dismiss(false); return 0; } break;
     case WM_CLOSE: self->dismiss(false); return 0;
     case WM_SETTINGCHANGE: case WM_SYSCOLORCHANGE:
+        self->update_animation_setting(); self->animate();
         RedrawWindow(window, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN); return 0;
     case WM_DPICHANGED: {
         MONITORINFO monitor{sizeof(monitor)};

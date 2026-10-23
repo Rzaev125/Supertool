@@ -10,6 +10,28 @@ std::wstring text(HWND control) {
     std::wstring value(static_cast<size_t>(GetWindowTextLengthW(control)) + 1, L'\0');
     value.resize(static_cast<size_t>(GetWindowTextW(control, value.data(), static_cast<int>(value.size())))); return value;
 }
+struct Messages { int timers = 0, paints = 0; };
+Messages pump(HWND window, DWORD milliseconds) {
+    Messages events;
+    const auto until = GetTickCount64() + milliseconds;
+    do {
+        MSG message{};
+        while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+            if (message.hwnd == window) {
+                if (message.message == WM_TIMER) ++events.timers;
+                if (message.message == WM_PAINT) ++events.paints;
+            }
+            TranslateMessage(&message); DispatchMessageW(&message);
+        }
+        Sleep(1);
+    } while (GetTickCount64() < until);
+    return events;
+}
+BYTE opacity(HWND window) {
+    BYTE alpha = 255; DWORD flags = 0;
+    check(GetLayeredWindowAttributes(window, nullptr, &alpha, &flags) && (flags & LWA_ALPHA), "notification must expose fade opacity");
+    return alpha;
+}
 void render(HWND window, const char* path) {
     RECT rect{}; GetClientRect(window, &rect);
     BITMAPINFO info{}; info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER); info.bmiHeader.biWidth = rect.right;
@@ -33,8 +55,17 @@ int main(int argc, char** argv) {
         check(notice.initialize(GetModuleHandleW(nullptr), owner, [&](auto folder) { actions.push_back(std::move(folder)); }), "initialize completion notification");
         TrayNotification first{L"Конвертация завершена", L"2 файла готовы", NIIF_INFO, L"D:\\first\\b.jpg", L"D:\\first"};
         const auto foreground = GetForegroundWindow();
+        BOOL animations = TRUE; SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &animations, 0);
         check(notice.show(first) && notice.visible(), "completed output must show a notification with an action button");
         check(GetForegroundWindow() == foreground, "notification must not steal focus");
+        const auto initial = opacity(notice.handle());
+        if (animations) check(initial < 255, "opening starts translucent");
+        pump(notice.handle(), 60);
+        if (animations) check(opacity(notice.handle()) > initial, "opacity must increase during opening");
+        pump(notice.handle(), 250);
+        check(opacity(notice.handle()) == 255, "opening settles fully opaque");
+        const auto idle = pump(notice.handle(), 100);
+        check(idle.timers == 0 && idle.paints == 0, "settled notification must not poll or repaint");
         auto button = GetDlgItem(notice.handle(), 103);
         check(button && text(button) == L"Открыть папку" && IsWindowEnabled(button), "native open-folder button must be visible and accessible");
         if (argc == 2) render(notice.handle(), argv[1]);
@@ -46,22 +77,48 @@ int main(int argc, char** argv) {
         check(!notice.show(second), "a later completion must not replace the active notification target");
         first.folder = L"D:\\changed";
         SendMessageW(button, BM_CLICK, 0, 0);
+        if (animations) {
+            check(notice.visible() && IsWindowVisible(notice.handle()) && actions.empty(), "closing must finish its fade before advancing notification queue");
+            check((GetWindowLongPtrW(notice.handle(), GWL_EXSTYLE) & WS_EX_TRANSPARENT) != 0 && !IsWindowEnabled(button), "closing notification must release input immediately");
+            check(!notice.show(second), "next notification must wait for closing fade");
+            pump(notice.handle(), 40);
+            check(opacity(notice.handle()) < 255, "opacity must decrease during closing");
+        }
+        pump(notice.handle(), 250);
         check(!notice.visible() && actions == std::vector<std::filesystem::path>{L"D:\\first"}, "button must open exactly its own original folder once");
+        check(!IsWindowVisible(notice.handle()), "faded notification window must be hidden");
+        const auto hidden = pump(notice.handle(), 100);
+        check(hidden.timers == 0 && hidden.paints == 0, "hidden notification must have no timer or paint work");
         SendMessageW(button, BM_CLICK, 0, 0);
         check(actions.size() == 1, "late duplicate button click must not open a folder twice");
         check(notice.show(second), "next notification can be shown after the previous one finishes");
+        pump(notice.handle(), 250);
         SendMessageW(GetDlgItem(notice.handle(), 104), BM_CLICK, 0, 0);
+        pump(notice.handle(), 250);
         check(!notice.visible() && actions.size() == 2 && actions.back().empty(), "close button dismisses without opening Explorer");
         check(notice.show(second), "show again before timeout test");
+        pump(notice.handle(), 250);
         SetWindowPos(notice.handle(), nullptr, -30000, -30000, 0, 0, SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOSIZE);
         SendMessageW(notice.handle(), WM_TIMER, 1, 0);
+        pump(notice.handle(), 250);
         check(!notice.visible() && actions.size() == 3 && actions.back().empty(), "timeout must dismiss without opening a folder");
         check(notice.show(second), "show before silent shutdown");
         notice.hide();
         check(!notice.visible() && actions.size() == 3, "silent hide must not consume the queued notification");
+        check(notice.show(second), "show before interrupted close"); pump(notice.handle(), 250);
+        SendMessageW(notice.handle(), WM_CLOSE, 0, 0); notice.hide();
+        check(notice.show(second), "reopen after silent animation cancellation"); pump(notice.handle(), 300);
+        check(notice.visible() && opacity(notice.handle()) == 255 && actions.size() == (animations ? 3 : 4), "cancelled animation must not hide or activate next notification");
+        notice.hide();
         check(!notice.show({L"Ошибка", L"нет результата", NIIF_ERROR, {}, {}}), "no open-folder notification without a ready output");
         notice.shutdown();
         check(!notice.handle(), "notification window released");
+        for (int repeat = 0; repeat < 3; ++repeat) {
+            check(notice.initialize(GetModuleHandleW(nullptr), owner, {}), "reinitialize notification instance");
+            check(notice.show(second), "recreated layered window must show again");
+            opacity(notice.handle()); // Every new HWND needs its own initial alpha attributes.
+            notice.shutdown();
+        }
         std::cout << "PASS native notification button, stable folder, focus, placement, close and timeout\n";
     } catch (const std::exception& e) { std::cerr << "FAIL " << e.what() << '\n'; result = 1; }
     DestroyWindow(owner); return result;
