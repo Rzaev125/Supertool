@@ -128,6 +128,29 @@ exif=Image.Exif();exif[274]=3;payload=exif.tobytes()
 app1=b'\xff\xe1'+struct.pack('>H',len(payload)+2)+payload
 bad=root/'ambiguous.jpg';bad.write_bytes(data[:2]+app1+data[2:]);convert(bad,fail=True)
 
+# Duplicate tag 274 within ONE IFD: WIC coalesces these during metadata lookup.
+# Construct independently, rather than using a dictionary writer which deduplicates.
+plain=root/'plain-for-duplicate.jpg';base.save(plain)
+for second in [3,6]:
+    directory=b'II'+struct.pack('<HIH',42,8,2)
+    for value in [6,second]: directory+=struct.pack('<HHIHH',274,3,1,value,0)
+    payload=b'Exif\0\0'+directory+bytes(4);data=plain.read_bytes()
+    source=root/f'duplicate-ifd-{second}.jpg'
+    source.write_bytes(data[:2]+b'\xff\xe1'+struct.pack('>H',len(payload)+2)+payload+data[2:])
+    convert(source,fail=True)
+    width,height=base.size
+    tags=[(256,4,1,width),(257,4,1,height),(258,3,3,0),(259,3,1,1),(262,3,1,2),
+          (273,4,1,0),(274,3,1,6),(274,3,1,second),(277,3,1,3),
+          (278,4,1,height),(279,4,1,width*height*3),(284,3,1,1)]
+    end=8+2+12*len(tags)+4;data=b'II'+struct.pack('<HIH',42,8,len(tags))
+    for tag,type_,count,value in tags:
+        if tag==258:value=end
+        if tag==273:value=end+6
+        data+=struct.pack('<HHII',tag,type_,count,value)
+    data+=bytes(4)+struct.pack('<HHH',8,8,8)+base.tobytes()
+    source=root/f'duplicate-ifd-{second}.tiff';source.write_bytes(data);convert(source,fail=True)
+print('PASS duplicate Orientation entries in JPEG/TIFF IFD refused, identical or conflicting',flush=True)
+
 # Only capture date is opt-in: no orientation, camera, author, GPS or XMP copying.
 for kind in ['jpg','tiff']:
     exif=Image.Exif();exif[274]=6;exif[315]='private author';exif[271]='private camera'

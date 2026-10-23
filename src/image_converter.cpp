@@ -1,4 +1,5 @@
 #include "image_converter.h"
+#include "image_exif.h"
 #include "diagnostics.h"
 #include "policy.h"
 #include "file_policy.h"
@@ -128,6 +129,7 @@ void convert_image(const fs::path& input_arg, const fs::path& output_arg, const 
             BY_HANDLE_FILE_INFORMATION info{};
             if (!GetFileInformationByHandle(source.value, &info) || (info.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)))
                 throw std::runtime_error("Нужен обычный локальный файл.");
+            validate_image_exif(source.value, (uint64_t(info.nFileSizeHigh) << 32) | info.nFileSizeLow);
             ComPtr<IWICImagingFactory> factory;
             require_hr(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory)), "Не удалось создать движок изображений");
             ComPtr<IWICBitmapDecoder> decoder;
