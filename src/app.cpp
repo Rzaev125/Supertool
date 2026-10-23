@@ -223,7 +223,12 @@ private:
     void notify_finished_batches() {
         for(const auto& group : queue_.take_batch_outcomes()) {
             if(!notify_batch(settings_.notifications, group)) continue;
-            auto message=group.total == 1 ? group.last_message : std::to_wstring(group.succeeded)+L" готово, "+std::to_wstring(group.failed)+L" ошибок, "+std::to_wstring(group.cancelled)+L" отменено";
+            auto message = group.last_message;
+            if (group.total > 1) {
+                message = L"Готово: " + std::to_wstring(group.succeeded) + L" из " + std::to_wstring(group.total);
+                if (group.failed) message += L", ошибок: " + std::to_wstring(group.failed);
+                if (group.cancelled) message += L", отменено: " + std::to_wstring(group.cancelled);
+            }
             std::error_code error;
             const auto folder = completion_folder(group.last_output, group.total, std::filesystem::is_directory(group.last_output, error));
             balloon(group.failed ? L"Конвертация: есть ошибки" : L"Конвертация завершена", message, group.failed ? NIIF_ERROR : NIIF_INFO, group.last_output, folder);

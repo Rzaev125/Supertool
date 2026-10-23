@@ -9,7 +9,9 @@
 
 namespace shiftwheel {
 namespace {
-constexpr int brand_id = 100, title_id = 101, message_id = 102, open_id = 103, close_id = 104;
+constexpr int brand_id = 100, title_id = 101, message_id = 102, open_id = 103, close_id = 104,
+    folder_id = 105, folder_caption_id = 106;
+constexpr int card_width = 420, card_height = 236;
 constexpr UINT_PTR expiry_timer = 1;
 constexpr UINT_PTR frame_timer = 2;
 constexpr double appear_ms = 180, disappear_ms = 140;
@@ -27,7 +29,7 @@ bool CompletionNotice::initialize(HINSTANCE instance, HWND owner, std::function<
     cls.lpszClassName = L"ShiftWheel.CompletionNotice"; cls.hCursor = LoadCursorW(nullptr, IDC_ARROW); cls.style = CS_DROPSHADOW;
     if (!RegisterClassW(&cls) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return false;
     window_ = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED, cls.lpszClassName,
-        L"ShiftWheel — конвертация завершена", WS_POPUP, 0, 0, 400, 188, owner, nullptr, instance, this);
+        L"ShiftWheel — конвертация завершена", WS_POPUP, 0, 0, card_width, card_height, owner, nullptr, instance, this);
     if (!window_) return false;
     auto control = [&](int id, const wchar_t* type, const wchar_t* text, DWORD style) {
         return CreateWindowExW(0, type, text, WS_CHILD | WS_VISIBLE | style, 0, 0, 1, 1, window_,
@@ -36,31 +38,38 @@ bool CompletionNotice::initialize(HINSTANCE instance, HWND owner, std::function<
     if (!control(brand_id, L"STATIC", L"ShiftWheel", SS_NOPREFIX) ||
         !control(title_id, L"STATIC", L"", SS_NOPREFIX | SS_ENDELLIPSIS) ||
         !control(message_id, L"STATIC", L"", SS_NOPREFIX | SS_ENDELLIPSIS) ||
+        !control(folder_caption_id, L"STATIC", L"Сохранено в папку", SS_NOPREFIX) ||
+        !control(folder_id, L"STATIC", L"", SS_NOPREFIX | SS_PATHELLIPSIS) ||
         !control(open_id, L"BUTTON", L"Открыть папку", WS_TABSTOP | BS_PUSHBUTTON) ||
-        !control(close_id, L"BUTTON", L"×", WS_TABSTOP | BS_PUSHBUTTON)) { shutdown(); return false; }
+        !control(close_id, L"BUTTON", L"Закрыть уведомление", WS_TABSTOP | BS_PUSHBUTTON)) { shutdown(); return false; }
     const DWORD corner = 2; DwmSetWindowAttribute(window_, DWMWA_WINDOW_CORNER_PREFERENCE, &corner, sizeof(corner));
     return true;
 }
 void CompletionNotice::layout(UINT dpi, const RECT& work) {
     dpi_ = dpi;
     auto px = [dpi](int value) { return MulDiv(value, static_cast<int>(dpi), 96); };
-    const int width = std::min(px(400), static_cast<int>(work.right - work.left) - px(24)), height = px(188);
+    const int width = std::min(px(card_width), static_cast<int>(work.right - work.left) - px(24)), height = px(card_height);
     HFONT font = CreateFontW(-px(14), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
         OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
-    HFONT title = CreateFontW(-px(16), 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+    HFONT title = CreateFontW(-px(18), 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
+    HFONT caption = CreateFontW(-px(12), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
         OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
     auto place = [&](int id, int x, int y, int w, int h) {
         const auto child = GetDlgItem(window_, id);
         SetWindowPos(child, nullptr, px(x), px(y), w, px(h), SWP_NOACTIVATE | SWP_NOZORDER);
-        SendMessageW(child, WM_SETFONT, reinterpret_cast<WPARAM>(id == title_id ? title : font), FALSE);
+        const auto control_font = id == title_id ? title : id == brand_id || id == folder_caption_id ? caption : font;
+        SendMessageW(child, WM_SETFONT, reinterpret_cast<WPARAM>(control_font), FALSE);
     };
-    place(brand_id, 56, 18, width - px(108), 24);
-    place(title_id, 20, 54, width - px(40), 25);
-    place(message_id, 20, 83, width - px(40), 40);
-    place(open_id, 20, 134, std::min(px(180), width - px(40)), 34);
+    place(brand_id, 48, 19, width - px(100), 18);
+    place(title_id, 70, 54, width - px(90), 26);
+    place(message_id, 70, 84, width - px(90), 20);
+    place(folder_caption_id, 62, 120, width - px(94), 17);
+    place(folder_id, 62, 140, width - px(94), 20);
+    place(open_id, 20, 180, width - px(40), 38);
     place(close_id, MulDiv(width, 96, static_cast<int>(dpi)) - 44, 12, px(30), 30);
-    if (font_) DeleteObject(font_); if (title_font_) DeleteObject(title_font_);
-    font_ = font; title_font_ = title;
+    if (font_) DeleteObject(font_); if (title_font_) DeleteObject(title_font_); if (caption_font_) DeleteObject(caption_font_);
+    font_ = font; title_font_ = title; caption_font_ = caption;
     SetWindowPos(window_, nullptr, work.right - width - px(12), work.bottom - height - px(12), width, height,
         SWP_NOACTIVATE | SWP_NOZORDER);
 }
@@ -72,10 +81,13 @@ bool CompletionNotice::show(const TrayNotification& notification) {
         if (!GetMonitorInfoW(screen, &monitor)) return false;
         UINT x = 96, y = 96; GetDpiForMonitor(screen, MDT_EFFECTIVE_DPI, &x, &y);
         if (monitor.rcWork.right - monitor.rcWork.left < MulDiv(260, static_cast<int>(x), 96) ||
-            monitor.rcWork.bottom - monitor.rcWork.top < MulDiv(212, static_cast<int>(x), 96)) return false;
+            monitor.rcWork.bottom - monitor.rcWork.top < MulDiv(card_height + 24, static_cast<int>(x), 96)) return false;
         folder_ = notification.folder;
+        const auto icon = notification.type & NIIF_ICON_MASK;
+        warning_ = icon == NIIF_ERROR || icon == NIIF_WARNING;
         SetWindowTextW(GetDlgItem(window_, title_id), notification.title.c_str());
         SetWindowTextW(GetDlgItem(window_, message_id), notification.message.c_str());
+        SetWindowTextW(GetDlgItem(window_, folder_id), folder_.c_str());
         layout(x, monitor.rcWork);
         SendMessageW(window_, WM_CHANGEUISTATE, MAKEWPARAM(UIS_SET, UISF_HIDEFOCUS), 0);
         DWORD seconds = 10; SystemParametersInfoW(SPI_GETMESSAGEDURATION, 0, &seconds, 0);
@@ -145,15 +157,40 @@ void CompletionNotice::shutdown() {
     last_alpha_ = -1;
     if (font_) { DeleteObject(font_); font_ = nullptr; }
     if (title_font_) { DeleteObject(title_font_); title_font_ = nullptr; }
+    if (caption_font_) { DeleteObject(caption_font_); caption_font_ = nullptr; }
     closed_ = {};
 }
 void CompletionNotice::paint(HDC dc) {
     const auto palette = panel_theme::colors();
+    const auto px = [this](int value) { return MulDiv(value, static_cast<int>(dpi_), 96); };
     RECT rect{}; GetClientRect(window_, &rect);
-    panel_theme::box(dc, rect, palette.surface, palette.border, MulDiv(12, static_cast<int>(dpi_), 96));
+    panel_theme::box(dc, rect, palette.surface, palette.border, px(14));
     const auto icon = LoadIconW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDI_SHIFTWHEEL));
-    DrawIconEx(dc, MulDiv(20, dpi_, 96), MulDiv(16, dpi_, 96), icon,
-        MulDiv(24, dpi_, 96), MulDiv(24, dpi_, 96), 0, nullptr, DI_NORMAL);
+    DrawIconEx(dc, px(20), px(16), icon, px(20), px(20), 0, nullptr, DI_NORMAL);
+    const auto status_color = palette.high_contrast ? palette.text : warning_ ? RGB(244,199,141) : RGB(142,228,203);
+    const auto status_background = palette.high_contrast ? palette.surface : warning_ ? RGB(59,48,32) : RGB(25,61,53);
+    const auto saved = SaveDC(dc);
+    const auto badge = CreateSolidBrush(status_background);
+    SelectObject(dc, badge); SelectObject(dc, GetStockObject(NULL_PEN));
+    Ellipse(dc, px(20), px(58), px(56), px(94));
+    const auto stroke = CreatePen(PS_SOLID, std::max(1, px(2)), status_color);
+    SelectObject(dc, stroke);
+    if (warning_) {
+        MoveToEx(dc, px(38), px(66), nullptr); LineTo(dc, px(38), px(79));
+        MoveToEx(dc, px(38), px(83), nullptr); LineTo(dc, px(38), px(86));
+    } else {
+        POINT check[]{{px(30),px(76)},{px(35),px(81)},{px(46),px(70)}}; Polyline(dc, check, 3);
+    }
+    RestoreDC(dc, saved); DeleteObject(stroke); DeleteObject(badge);
+    const RECT folder{px(20),px(112),rect.right-px(20),px(164)};
+    panel_theme::box(dc, folder, palette.canvas, palette.canvas, px(8));
+    const auto folder_state = SaveDC(dc);
+    const auto folder_pen = CreatePen(PS_SOLID, std::max(1, px(1)), palette.muted);
+    SelectObject(dc, folder_pen); SelectObject(dc, GetStockObject(NULL_BRUSH));
+    POINT outline[]{{px(32),px(132)},{px(39),px(132)},{px(42),px(136)},{px(50),px(136)},
+        {px(50),px(146)},{px(32),px(146)},{px(32),px(132)}};
+    Polyline(dc, outline, 7);
+    RestoreDC(dc, folder_state); DeleteObject(folder_pen);
 }
 LRESULT CALLBACK CompletionNotice::window_proc(HWND window, UINT message, WPARAM w, LPARAM l) {
     auto self = reinterpret_cast<CompletionNotice*>(GetWindowLongPtrW(window, GWLP_USERDATA));
@@ -171,16 +208,32 @@ LRESULT CALLBACK CompletionNotice::window_proc(HWND window, UINT message, WPARAM
         self->paint(dc); EndPaint(window, &paint); return 0;
     }
     case WM_PRINTCLIENT: self->paint(reinterpret_cast<HDC>(w)); return 0;
-    case WM_CTLCOLORSTATIC:
-        SetTextColor(reinterpret_cast<HDC>(w), GetDlgCtrlID(reinterpret_cast<HWND>(l)) == brand_id ? palette.accent : palette.text);
-        SetBkColor(reinterpret_cast<HDC>(w), palette.surface); SetDCBrushColor(reinterpret_cast<HDC>(w), palette.surface);
+    case WM_CTLCOLORSTATIC: {
+        const auto id = GetDlgCtrlID(reinterpret_cast<HWND>(l));
+        const auto background = id == folder_id || id == folder_caption_id ? palette.canvas : palette.surface;
+        const auto foreground = id == brand_id || id == message_id || id == folder_caption_id ? palette.muted : palette.text;
+        SetTextColor(reinterpret_cast<HDC>(w), foreground);
+        SetBkColor(reinterpret_cast<HDC>(w), background); SetDCBrushColor(reinterpret_cast<HDC>(w), background);
         return reinterpret_cast<LRESULT>(GetStockObject(DC_BRUSH));
+    }
     case WM_NOTIFY: {
         const auto item = reinterpret_cast<NMHDR*>(l);
         if (item->code == NM_CUSTOMDRAW && (item->idFrom == open_id || item->idFrom == close_id)) {
             const auto draw = reinterpret_cast<NMCUSTOMDRAW*>(l);
             if (draw->dwDrawStage == CDDS_PREPAINT) {
-                panel_theme::button(*draw, palette, self->font_, self->dpi_, item->idFrom == open_id); return CDRF_SKIPDEFAULT;
+                panel_theme::fill(draw->hdc, draw->rc, palette.surface);
+                if (item->idFrom == open_id) panel_theme::button(*draw, palette, self->font_, self->dpi_, true);
+                else {
+                    const bool hot = (draw->uItemState & (CDIS_HOT | CDIS_SELECTED)) != 0;
+                    panel_theme::box(draw->hdc, draw->rc, hot ? palette.input : palette.surface,
+                        hot ? palette.border : palette.surface, MulDiv(8, static_cast<int>(self->dpi_), 96));
+                    panel_theme::text(draw->hdc, L"×", draw->rc, self->title_font_, palette.muted,
+                        DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                    if ((draw->uItemState & CDIS_FOCUS) && panel_theme::focus_visible(draw->hdr.hwndFrom)) {
+                        auto focus = draw->rc; InflateRect(&focus, -2, -2); DrawFocusRect(draw->hdc, &focus);
+                    }
+                }
+                return CDRF_SKIPDEFAULT;
             }
         }
         break;

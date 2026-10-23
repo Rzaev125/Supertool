@@ -32,6 +32,27 @@ BYTE opacity(HWND window) {
     check(GetLayeredWindowAttributes(window, nullptr, &alpha, &flags) && (flags & LWA_ALPHA), "notification must expose fade opacity");
     return alpha;
 }
+void check_layout(HWND window) {
+    RECT client{}; GetClientRect(window, &client);
+    auto bounds = [&](int id) {
+        RECT rect{}; const auto control = GetDlgItem(window, id); check(control != nullptr, "notification control missing");
+        GetWindowRect(control, &rect); MapWindowPoints(nullptr, window, reinterpret_cast<POINT*>(&rect), 2);
+        check(rect.left >= 0 && rect.top >= 0 && rect.right <= client.right && rect.bottom <= client.bottom,
+            "notification controls must stay inside card at every DPI");
+        return rect;
+    };
+    for (int id : {100,101,102,103,104,105,106}) bounds(id);
+    check(bounds(101).bottom <= bounds(102).top && bounds(102).bottom <= bounds(106).top &&
+        bounds(106).bottom <= bounds(105).top && bounds(105).bottom <= bounds(103).top,
+        "title, summary, destination and action must not overlap");
+    const auto button = GetDlgItem(window, 103); const auto dc = GetDC(button);
+    const auto old = SelectObject(dc, reinterpret_cast<HFONT>(SendMessageW(button, WM_GETFONT, 0, 0)));
+    const auto caption = text(button); SIZE size{}; GetTextExtentPoint32W(dc, caption.c_str(), static_cast<int>(caption.size()), &size);
+    SelectObject(dc, old); ReleaseDC(button, dc);
+    const auto button_rect = bounds(103);
+    check(size.cx < button_rect.right-button_rect.left && size.cy < button_rect.bottom-button_rect.top,
+        "open-folder caption must fit at every DPI");
+}
 void render(HWND window, const char* path) {
     RECT rect{}; GetClientRect(window, &rect);
     BITMAPINFO info{}; info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER); info.bmiHeader.biWidth = rect.right;
@@ -68,6 +89,15 @@ int main(int argc, char** argv) {
         check(idle.timers == 0 && idle.paints == 0, "settled notification must not poll or repaint");
         auto button = GetDlgItem(notice.handle(), 103);
         check(button && text(button) == L"Открыть папку" && IsWindowEnabled(button), "native open-folder button must be visible and accessible");
+        const auto folder_label = GetDlgItem(notice.handle(), 105);
+        check(folder_label && text(folder_label) == first.folder.wstring(), "notification must show its actual destination folder as accessible text");
+        check(text(GetDlgItem(notice.handle(), 104)) == L"Закрыть уведомление", "close button must have a meaningful accessible name");
+        const auto original_dpi = GetDpiForWindow(notice.handle());
+        for (UINT dpi : {96U,144U,192U}) {
+            SendMessageW(notice.handle(), WM_DPICHANGED, MAKELONG(dpi,dpi), 0);
+            check_layout(notice.handle());
+        }
+        SendMessageW(notice.handle(), WM_DPICHANGED, MAKELONG(original_dpi,original_dpi), 0);
         if (argc == 2) render(notice.handle(), argv[1]);
         RECT work{}, outer{}; MONITORINFO monitor{sizeof(monitor)};
         GetMonitorInfoW(MonitorFromWindow(notice.handle(), MONITOR_DEFAULTTOPRIMARY), &monitor); work = monitor.rcWork;
@@ -92,6 +122,7 @@ int main(int argc, char** argv) {
         SendMessageW(button, BM_CLICK, 0, 0);
         check(actions.size() == 1, "late duplicate button click must not open a folder twice");
         check(notice.show(second), "next notification can be shown after the previous one finishes");
+        check(text(folder_label) == second.folder.wstring(), "next notification must refresh displayed folder");
         pump(notice.handle(), 250);
         SendMessageW(GetDlgItem(notice.handle(), 104), BM_CLICK, 0, 0);
         pump(notice.handle(), 250);
@@ -119,7 +150,20 @@ int main(int argc, char** argv) {
             opacity(notice.handle()); // Every new HWND needs its own initial alpha attributes.
             notice.shutdown();
         }
-        std::cout << "PASS native notification button, stable folder, focus, placement, close and timeout\n";
+        if (argc == 2) {
+            check(notice.initialize(GetModuleHandleW(nullptr), owner, {}), "initialize preview");
+            TrayNotification sample{L"Конвертация завершена", L"Готово: 8 из 8", NIIF_INFO,
+                L"D:\\Фото\\Конвертация JPG\\DSC_0148.jpg", L"D:\\Фото\\Конвертация JPG"};
+            check(notice.show(sample), "show success preview"); pump(notice.handle(), 250); render(notice.handle(), argv[1]);
+            SendMessageW(notice.handle(), WM_DPICHANGED, MAKELONG(192,192), 0); check_layout(notice.handle());
+            render(notice.handle(), (std::string(argv[1])+".192.bmp").c_str()); notice.hide();
+            sample.title=L"Конвертация: есть ошибки"; sample.message=L"Готово: 7 из 8, ошибок: 1"; sample.type=NIIF_ERROR;
+            sample.folder=L"D:\\Фото\\Съёмка в Баку\\Обработанные фотографии\\Конвертация JPG";
+            check(notice.show(sample), "show partial result preview"); pump(notice.handle(), 250);
+            check(text(GetDlgItem(notice.handle(),105)) == sample.folder.wstring(), "long destination remains complete for accessibility");
+            render(notice.handle(), (std::string(argv[1])+".warning.bmp").c_str()); notice.shutdown();
+        }
+        std::cout << "PASS notification layout at 96/144/192 DPI, destination, action, animation and lifecycle\n";
     } catch (const std::exception& e) { std::cerr << "FAIL " << e.what() << '\n'; result = 1; }
     DestroyWindow(owner); return result;
 }

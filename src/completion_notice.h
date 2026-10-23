@@ -22,9 +22,10 @@ private:
     void animate();
     void update_animation_setting();
     HWND window_ = nullptr;
-    HFONT font_ = nullptr, title_font_ = nullptr;
+    HFONT font_ = nullptr, title_font_ = nullptr, caption_font_ = nullptr;
     UINT dpi_ = 96;
     bool visible_ = false;
+    bool warning_ = false;
     bool closing_ = false, open_on_close_ = false, animations_ = true;
     UINT_PTR animation_timer_ = 0;
     Transition opacity_;
