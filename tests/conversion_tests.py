@@ -210,7 +210,12 @@ def avif_tests():
     image.save(animated, save_all=True, append_images=[Image.new('RGBA', image.size, (0, 255, 0, 255))], duration=100)
     convert(animated, 'png', fail=True)
     encoder = exe.parent / 'modules/avif/avifenc.exe'
-    for name, options in [('rotated', ['--irot', '1']), ('hdr', ['--cicp', '9/16/9']),
+    rotated = root / 'rotated.avif'
+    encoded = run([encoder, '-j', '2', '-s', '8', '--irot', '1', source, rotated])
+    assert encoded.returncode == 0, encoded.stderr
+    with Image.open(convert(rotated, 'png')) as decoded:
+        assert decoded.size == (48, 64)
+    for name, options in [('hdr', ['--cicp', '9/16/9']),
                           ('linear', ['--cicp', '1/8/6']), ('wide-gamut', ['--cicp', '12/13/6'])]:
         special = root / f'{name}.avif'
         encoded = run([encoder, '-j', '2', '-s', '8', *options, source, special])
