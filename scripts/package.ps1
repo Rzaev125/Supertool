@@ -14,18 +14,12 @@ Copy-Item -LiteralPath $exe -Destination $destination
 Copy-Item -LiteralPath (Join-Path $root 'README.md') -Destination $destination
 Copy-Item -LiteralPath (Join-Path $root 'resources\START.txt') -Destination $destination
 $docs=Join-Path $destination 'docs';[void][IO.Directory]::CreateDirectory($docs)
-foreach($file in @('performance-0.9.md','performance-0.9.json','modules-0.9.md','modules.md','heic-module.md','presentation-module.md','ocr-module.md','installer.md','hardware-video.md','updates.md','signing.md','recovery.md','acceptance-0.7.0.md','acceptance-0.8.0.md')){
+foreach($file in @('performance-0.9.md','performance-0.9.json','modules-0.9.md','modules.md','heic-module.md','presentation-module.md','ocr-module.md','installer.md','hardware-video.md','updates.md','signing.md','recovery.md','acceptance-0.7.0.md','acceptance-0.8.0.md','acceptance-0.9.0.md')){
  Copy-Item -LiteralPath (Join-Path $root ('docs\'+$file)) -Destination $docs
 }
 Copy-Item -LiteralPath (Join-Path $root 'docs\verification.md') -Destination (Join-Path $destination 'VERIFICATION.md')
 if($Distribution -eq 'full'){
- Copy-Item -LiteralPath (Join-Path $root 'tools\modules') -Destination $destination -Recurse
- $catalog=Get-Content -LiteralPath (Join-Path $root 'out\module-assets\catalog.json') -Raw -Encoding UTF8 | ConvertFrom-Json
- foreach($m in $catalog){
-  $dir=Join-Path $destination ('modules\'+$m.id)
-  Copy-Item -LiteralPath (Join-Path $root ('build\module-packages\'+$m.id+'.inventory')) -Destination (Join-Path $dir '.sw-inventory')
-  [IO.File]::WriteAllText((Join-Path $dir '.sw-module'),($m.id+"`n"+$m.version+"`n"+$m.inventory_sha256),[Text.UTF8Encoding]::new($false))
- }
+ & (Join-Path $PSScriptRoot 'stage-modules.ps1') -ModuleRoot (Join-Path $root 'tools\modules') -InventoryDirectory (Join-Path $root 'build\module-packages') -CatalogPath (Join-Path $root 'resources\module_catalog.json') -Destination (Join-Path $destination 'modules')
 }
 $release=[ordered]@{version=$version;distribution=$Distribution;executable_sha256=(Get-FileHash -LiteralPath (Join-Path $destination 'ShiftWheel.exe') -Algorithm SHA256).Hash}
 [IO.File]::WriteAllText((Join-Path $destination 'release.json'),($release|ConvertTo-Json)+[Environment]::NewLine,[Text.UTF8Encoding]::new($false))

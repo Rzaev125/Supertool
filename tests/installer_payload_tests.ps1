@@ -54,7 +54,7 @@ Copy-Item -LiteralPath (Join-Path $root 'build\Release\ShiftWheel.exe') -Destina
 $coreVersion=(Get-Item -LiteralPath (Join-Path $core 'ShiftWheel.exe')).VersionInfo.ProductVersion
 $coreHash=(Get-FileHash -LiteralPath (Join-Path $core 'ShiftWheel.exe')).Hash
 [IO.File]::WriteAllText((Join-Path $core 'release.json'),('{"version":"'+$coreVersion+'","executable_sha256":"'+$coreHash+'","distribution":"core"}'))
-& $script -PayloadDirectory $core -StageDirectory (Join-Path $work 'core-stage') -Version $coreVersion
+& $script -PayloadDirectory $core -StageDirectory (Join-Path $work 'core-stage') -Version $coreVersion -Distribution core
 if(Test-Path -LiteralPath (Join-Path $work 'core-stage\modules')){throw 'FAIL: core unexpectedly includes modules'}
 [IO.File]::WriteAllText((Join-Path $core 'release.json'),('{"version":"'+$coreVersion+'","executable_sha256":"'+$coreHash+'","distribution":"full"}'))
 $rejected=$false
