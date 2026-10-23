@@ -42,5 +42,5 @@
 ### Task3: Local0.15 acceptance
 
 - [x] Update all current version declarations incl CI/manifests, README/START and package docs; historical0.14 evidence preserved; release guard GREEN.
-- [ ] Warning-free build, full sequential CTest on D-local TEMP/TMP; one fresh read-only final review, fix confirmed Important/Critical once with RED/GREEN and full green suite.
-- [ ] Final evidence/docs commit, archive owned ledger, retain local branch. No new artifacts/installer/publish.
+- [x] Warning-free build, full sequential CTest on D-local TEMP/TMP; one fresh read-only final review, fix confirmed Important/Critical once with RED/GREEN and full green suite.
+- [x] Final evidence/docs commit, archive owned ledger, retain local branch. No new artifacts/installer/publish.
