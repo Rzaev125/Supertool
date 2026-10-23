@@ -40,11 +40,12 @@ int main(int argc,char** argv){try{
    check(module_status(root,spec).installed,"locked CAB does not fail committed installation");
    check(!fs::exists(current),"old managed module retired despite cleanup failure");
    check(fs::exists(retained),"locked CAB retained safely");
+   install_module(root,spec,{}, {},copy);check(fs::exists(retained),"owned cache can survive a later replacement");
    CloseHandle(reader.value);reader.value=INVALID_HANDLE_VALUE;
    current=module_directory(root,"ffmpeg");
    // Fixture has a custom pin: production cleanup must not trust arbitrary CABs.
    cleanup_module_downloads(root);check(fs::exists(retained),"unrecognized download pin preserved");
-   std::array<ModuleSpec,1> catalog{spec};cleanup_module_downloads(root,catalog);check(!fs::exists(retained),"unlocked owned CAB cleanup retried");
+   std::array<ModuleSpec,1> catalog{spec};cleanup_module_downloads(root,catalog);check(!fs::exists(retained),"unlocked owned CAB cleanup retried after retirement");
   }
   {ModuleLease reading(root,false);rejects([&]{install_module(root,spec,{}, {},copy);});check(module_directory(root,"ffmpeg")==current,"busy publication leaves original");}
   auto corrupt=spec;corrupt.sha256[0]=corrupt.sha256[0]==L'0'?L'1':L'0';rejects([&]{install_module(root,corrupt,{}, {},copy);});check(module_directory(root,"ffmpeg")==current,"hash failure leaves original");

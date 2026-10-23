@@ -105,6 +105,18 @@ void extract_module_cab(const fs::path& cab,const fs::path& fresh,const ModuleSp
 void cleanup_module_downloads(const fs::path& app,std::span<const ModuleSpec> catalog) noexcept{
  try{
   ModuleLease lease(app,true);
+  size_t visited=0;
+  for(const auto& item:fs::directory_iterator(app/L"modules")){
+   if(++visited>4096)break;auto name=item.path().filename().wstring();
+   if(name.size()!=50||!name.starts_with(L"pkg-")||!name.ends_with(L".cab.owner")||name.substr(4,36).find_first_not_of(L"abcdef0123456789-")!=std::wstring::npos)continue;
+   try{
+    auto owner=load_local_state(item.path(),500);if(!owner)continue;
+    for(const auto& spec:catalog)if(*owner==spec.id+"\n"+narrow(spec.version)+"\n"+narrow(spec.sha256)){
+     auto cab=item.path();cab.replace_extension();verify_module_archive(cab,spec);
+     std::error_code ec;fs::remove(cab,ec);if(!ec)fs::remove(item.path(),ec);break;
+    }
+   }catch(...){}
+  }
   for(const auto& spec:catalog){
    auto dir=module_directory(app,spec.id);if(dir.parent_path()!=app/L"modules"||!dir.filename().string().starts_with("pkg-"))continue;
    auto receipt=load_local_state(dir/L".sw-module",500);
@@ -126,13 +138,14 @@ ModuleInstallResult install_module(const fs::path& app,const ModuleSpec& spec,st
   {std::ofstream f(cab,std::ios::binary);if(!f)bad();if(transport)transport(spec.url,spec.bytes,f,stop);else download_asset(spec.url,spec.bytes,f,stop,progress);f.close();if(!f)bad();}
   stopped(stop);extract_module_cab(cab,stage,spec,stop);verify_files(stage,spec,stop);stopped(stop);
   save_local_state(stage/L".sw-module",spec.id+"\n"+narrow(spec.version)+"\n"+narrow(spec.inventory_sha256));
+  auto owner=cab;owner+=L".owner";save_local_state(owner,spec.id+"\n"+narrow(spec.version)+"\n"+narrow(spec.sha256));
   ModuleLease lease(app,true);
   if(!spec.dependency.empty()){auto& all=module_catalog();auto it=std::find_if(all.begin(),all.end(),[&](auto& x){return x.id==spec.dependency;});if(it==all.end()||!module_status(app,*it).installed)throw std::runtime_error("Сначала установите зависимый модуль PDF.");}
   fs::path old;try{old=module_directory(app,spec.id);}catch(...){/* Preserve unknown old data; repair the pointer only. */}
   save_local_state(app/L"modules"/(".active-"+spec.id),name);committed=true;
-  std::error_code cleanup_error;fs::remove(cab,cleanup_error);retire(app,old,spec);
+  std::error_code cleanup_error;fs::remove(cab,cleanup_error);if(!cleanup_error){std::error_code ec;fs::remove(owner,ec);}retire(app,old,spec);
   return {static_cast<bool>(cleanup_error)};
- }catch(...){std::error_code ec;fs::remove(cab,ec);if(!committed)remove_owned_tree(stage);throw;}
+ }catch(...){std::error_code ec;fs::remove(cab,ec);if(!ec){auto owner=cab;owner+=L".owner";fs::remove(owner,ec);}if(!committed)remove_owned_tree(stage);throw;}
 }
 void remove_module(const fs::path& app,const ModuleSpec& spec){
  ModuleLease lease(app,true);
