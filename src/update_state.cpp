@@ -22,6 +22,10 @@ void save_update_policy(const fs::path& path,const UpdatePolicy& p){
  std::string version;for(auto c:p.highest_version)version+=static_cast<char>(c);
  std::ostringstream o;o<<"SWU1 "<<p.deferred_until<<' '<<p.retry_after<<' '<<p.failures<<' '<<std::quoted(version)<<'\n';save_local_state(path,o.str());
 }
+void commit_install_request(const fs::path& path,UpdatePolicy& policy,bool& requested){
+ auto next=policy;next.deferred_until=0;save_update_policy(path,next);
+ policy=std::move(next);requested=true;
+}
 namespace {
 bool plain(const fs::path& p){auto a=GetFileAttributesW(p.c_str());return a!=INVALID_FILE_ATTRIBUTES&&!(a&(FILE_ATTRIBUTE_REPARSE_POINT|FILE_ATTRIBUTE_DIRECTORY));}
 bool owned(const fs::path& dir){

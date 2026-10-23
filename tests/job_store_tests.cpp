@@ -21,6 +21,9 @@ int main(){try{
  restored.set_paused(false);auto second=restored.next()->id;restored.start(second);restored.complete(second,JobState::Failed,{},L"error");
  auto outcomes=restored.take_batch_outcomes();check(outcomes.size()==1&&outcomes[0].failed==1&&outcomes[0].cancelled==1,"restored group accounting");
  save_queue(path,restored.snapshot());check(load_queue(path)->jobs.size()==2,"history missing");
+ JobQueue history_only;history_only.restore(restored.snapshot());check(!history_only.paused(),"history-only restart silently pauses fresh admissions");
+ auto unavailable=restored.snapshot();unavailable.jobs[0].input=L"Z:\\disconnected\\input.png";
+ save_queue(dir/L"unavailable.dat",unavailable);check(load_queue(dir/L"unavailable.dat")->jobs.size()==2,"unavailable historical path destroyed store");std::filesystem::remove(dir/L"unavailable.dat");
  auto bad=restored.snapshot();bad.jobs.push_back(bad.jobs[0]);reject([&]{save_queue(path,bad);});check(load_queue(path)->jobs.size()==2,"failed save replaced old state");
  auto group_bad=restored.snapshot();group_bad.completed_batches[0].last_output=L"\\\\server\\share\\result.jpg";reject([&]{save_queue(path,group_bad);});
  auto lock=CreateFileW(path.c_str(),GENERIC_READ,0,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);check(lock!=INVALID_HANDLE_VALUE,"fixture lock");
@@ -30,6 +33,7 @@ int main(){try{
  full.start(full.next()->id);JobQueue recovered_full;recovered_full.restore(full.snapshot());save_queue(dir/L"full.dat",recovered_full.snapshot());
  check(recovered_full.items().size()==100,"interrupted job broke history bound");std::filesystem::remove(dir/L"full.dat");
  auto rev=restored.revision();restored.clear_history();check(restored.items().empty()&&restored.revision()>rev,"clear history");check(std::filesystem::exists(input),"clear history deleted source");
+ JobQueue empty;empty.restore(restored.snapshot());check(!empty.paused(),"empty store pauses new drops");
  {std::ofstream f(path,std::ios::trunc);f<<"SWQ1\ncorrupt";}reject([&]{load_queue(path);});
  {std::ofstream f(path,std::ios::trunc);f<<std::string(4*1024*1024+1,'x');}reject([&]{load_queue(path);});
  check(!load_queue(dir/L"absent").has_value(),"missing state is error");

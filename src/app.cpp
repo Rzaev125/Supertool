@@ -77,7 +77,7 @@ public:
         actions.check_update=[this]{check_updates(true);};
         actions.install_update=[this]{
             if(pending_setup_.empty())throw std::runtime_error("Проверенный установщик ещё не загружен.");
-            install_requested_=true;update_policy_.deferred_until=0;save_update_policy(update_policy_path_,update_policy_);
+            commit_install_request(update_policy_path_,update_policy_,install_requested_);
             update_status_=L"Установка запрошена. Дождёмся завершения всей очереди.";refresh();PostMessageW(window_,wm_start_next,0,0);
         };
         actions.later_update=[this]{
@@ -236,6 +236,7 @@ private:
         panel_.update(state);
     }
     static void reveal(const std::filesystem::path& path) {
+        validate_local_path(path,false);
         if (!std::filesystem::exists(path)) throw std::runtime_error("Файл результата больше не существует.");
         PIDLIST_ABSOLUTE item = ILCreateFromPathW(path.c_str());
         if (!item) throw std::runtime_error("Не удалось найти результат в Проводнике.");
@@ -287,8 +288,8 @@ private:
                 if(!newer_version(release.version,app_version))notice=L"Установлена актуальная версия.";
                 else if(!installed)notice=L"Доступна версия "+release.version+L". Переносимую копию обновите вручную через страницу выпусков GitHub.";
                 else{
-                    download_total_=release.size;PostMessageW(window_,wm_update_progress,0,0);ULONGLONG tick=0;
-                    setup=download_update(release,stop,{},[this,&tick](auto got,auto total){download_got_=got;download_total_=total;auto now=GetTickCount64();if(now-tick>=250||got==total){tick=now;PostMessageW(window_,wm_update_progress,0,0);}});
+                    download_total_=release.size;PostMessageW(window_,wm_update_progress,generation,0);ULONGLONG tick=0;
+                    setup=download_update(release,stop,{},[this,&tick,generation](auto got,auto total){download_got_=got;download_total_=total;auto now=GetTickCount64();if(now-tick>=250||got==total){tick=now;PostMessageW(window_,wm_update_progress,generation,0);}});
                     hash=release.sha256;notice=L"Версия "+release.version+L" загружена и проверена. Выберите «Установить сейчас» или «Позже».";
                 }
                 success=true;
@@ -391,6 +392,7 @@ private:
             if (self->wheel_ && self->wheel_->visible()) SetTimer(hwnd, 1, 250, nullptr);
             return 0;
         case wm_update_progress:
+            if(static_cast<unsigned>(w)!=self->update_generation_)return 0;
             if(self->checking_&&self->download_total_){
                 std::lock_guard lock(self->update_mutex_);
                 self->update_status_=L"Версия "+self->available_release_.version+L": загрузка "+std::to_wstring(self->download_got_*100/self->download_total_)+L"%\r\n"+self->available_release_.notes;

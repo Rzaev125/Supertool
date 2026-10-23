@@ -16,7 +16,7 @@ Copy-Item -LiteralPath $modules -Destination $destination -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $root 'README.md') -Destination $destination -Force
 Copy-Item -LiteralPath (Join-Path $root 'docs\modules.md') -Destination $destination -Force
 [void][System.IO.Directory]::CreateDirectory((Join-Path $destination 'docs'))
-foreach ($document in @('heic-module.md','presentation-module.md','ocr-module.md','installer.md','hardware-video.md','updates.md','acceptance-0.8.0.md')) {
+foreach ($document in @('heic-module.md','presentation-module.md','ocr-module.md','installer.md','hardware-video.md','updates.md','acceptance-0.7.0.md','acceptance-0.8.0.md')) {
     Copy-Item -LiteralPath (Join-Path $root "docs\$document") -Destination $destination -Force
     Copy-Item -LiteralPath (Join-Path $root "docs\$document") -Destination (Join-Path $destination 'docs') -Force
 }

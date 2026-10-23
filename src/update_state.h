@@ -16,6 +16,7 @@ int64_t update_now();
 bool may_install_update(bool requested,bool running,size_t pending);
 UpdatePolicy load_update_policy(const std::filesystem::path& path);
 void save_update_policy(const std::filesystem::path& path,const UpdatePolicy& policy);
+void commit_install_request(const std::filesystem::path& path,UpdatePolicy& policy,bool& requested);
 void cleanup_update_cache(const std::filesystem::path& root,const std::filesystem::path& protected_setup) noexcept;
 void discard_update_download(const std::filesystem::path& setup) noexcept;
 }

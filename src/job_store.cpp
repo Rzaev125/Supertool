@@ -21,19 +21,26 @@ std::wstring wide(const std::string& s){
  std::wstring v(n,L'\0');MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,s.data(),static_cast<int>(s.size()),v.data(),n);return v;
 }
 void check_id(uint64_t id){if(!id||id>=(1ULL<<60))invalid();}
+// Stored history can refer to a removed drive or a no-longer-existing folder.
+// Reject unsafe syntax here; check the live filesystem only when using a job.
+void stored_path(const fs::path& path){
+ auto drive=path.root_path().wstring();auto relative=path.relative_path().wstring();auto text=path.wstring();
+ if(!path.is_absolute()||drive.size()!=3||drive[1]!=L':'||!((drive[0]>=L'A'&&drive[0]<=L'Z')||(drive[0]>=L'a'&&drive[0]<=L'z'))||relative.find(L':')!=std::wstring::npos||text.find(L'\0')!=std::wstring::npos)invalid();
+ for(auto c:text)if(c<32)invalid();
+}
 void validate(const QueueSnapshot& s){
  if(s.jobs.size()>357||s.batches.size()>357||s.completed_batches.size()>100)invalid();
  std::set<uint64_t> ids,groups;size_t pending=0,active=0,finished=0;
  auto validate_batch=[&](const BatchOutcome& b){
   check_id(b.id);if(!groups.insert(b.id).second||!b.total||b.total>256||b.remaining>b.total||b.succeeded>b.total||b.failed>b.total||b.cancelled>b.total||b.remaining+b.succeeded+b.failed+b.cancelled!=b.total)invalid();
-  if(!b.last_output.empty())validate_local_path(b.last_output,false);
+  if(!b.last_output.empty())stored_path(b.last_output);
  };
  for(const auto& b:s.batches)validate_batch(b);
  for(const auto& b:s.completed_batches){validate_batch(b);if(b.remaining)invalid();}
  for(const auto& j:s.jobs){
   check_id(j.id);check_id(j.batch_id);if(!ids.insert(j.id).second||j.state<JobState::Queued||j.state>JobState::Interrupted||!supports_conversion(j.input,j.format))invalid();
-  validate_options(j.options);validate_local_path(j.input,false);
-  if(!j.output_directory.empty())validate_local_path(j.output_directory,false);if(!j.output.empty())validate_local_path(j.output,false);
+  validate_options(j.options);stored_path(j.input);
+  if(!j.output_directory.empty())stored_path(j.output_directory);if(!j.output.empty())stored_path(j.output);
   if(j.state==JobState::Queued)++pending;else if(j.state==JobState::Running)++active;else ++finished;
  }
  if(pending>256||active>1||finished>100)invalid();
@@ -93,6 +100,6 @@ void JobQueue::restore(const QueueSnapshot& s){
  }
  auto terminal=next.jobs_.size()-next.pending();
  while(terminal>100){auto it=std::find_if(next.jobs_.begin(),next.jobs_.end(),[](const auto& j){return j.state!=JobState::Queued;});next.jobs_.erase(it);--terminal;}
- next.paused_=true;next.revision_=revision_+1;*this=std::move(next);
+ next.paused_=next.pending()!=0;next.revision_=revision_+1;*this=std::move(next);
 }
 }
