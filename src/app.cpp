@@ -8,6 +8,7 @@
 #include <map>
 #include "diagnostics.h"
 #include "tray_notifications.h"
+#include "completion_notice.h"
 #include <shobjidl.h>
 #include <thread>
 #include <atomic>
@@ -37,6 +38,7 @@ public:
         if (mouse_) UnhookWindowsHookEx(mouse_);
         if (keyboard_) UnhookWindowsHookEx(keyboard_);
         worker_.shutdown();
+        completion_notice_.shutdown();
         panel_.shutdown();
         if (wheel_) wheel_->shutdown();
         if (tray_) { NOTIFYICONDATAW icon{sizeof(icon)}; icon.hWnd = window_; icon.uID = 1; Shell_NotifyIconW(NIM_DELETE, &icon); }
@@ -132,6 +134,13 @@ public:
             wheel_->hide(); panel_.set_settings(settings_); refresh();
         };
         if (FAILED(panel_.initialize(instance, settings_, std::move(actions)))) throw std::runtime_error("Не удалось создать окно задач.");
+        completion_notice_.initialize(instance, window_, [this](std::filesystem::path folder) {
+            notifications_.finish(); PostMessageW(window_, wm_next_notification, 0, 0);
+            if (!folder.empty()) {
+                try { open_folder(folder); }
+                catch (const std::exception& error) { balloon(L"Не удалось открыть папку", from_utf8(error.what()), NIIF_ERROR); }
+            }
+        });
         add_tray();
         taskbar_created_ = RegisterWindowMessageW(L"TaskbarCreated");
         keyboard_ = SetWindowsHookExW(WH_KEYBOARD_LL, keyboard_proc, instance, 0);
@@ -215,7 +224,9 @@ private:
         for(const auto& group : queue_.take_batch_outcomes()) {
             if(!notify_batch(settings_.notifications, group)) continue;
             auto message=group.total == 1 ? group.last_message : std::to_wstring(group.succeeded)+L" готово, "+std::to_wstring(group.failed)+L" ошибок, "+std::to_wstring(group.cancelled)+L" отменено";
-            balloon(group.failed ? L"Конвертация: есть ошибки" : L"Конвертация завершена", message, group.failed ? NIIF_ERROR : NIIF_INFO, group.last_output);
+            std::error_code error;
+            const auto folder = completion_folder(group.last_output, group.total, std::filesystem::is_directory(group.last_output, error));
+            balloon(group.failed ? L"Конвертация: есть ошибки" : L"Конвертация завершена", message, group.failed ? NIIF_ERROR : NIIF_INFO, group.last_output, folder);
         }
     }
     bool persist_queue() {
@@ -305,6 +316,13 @@ private:
         const HRESULT result = SHOpenFolderAndSelectItems(item, 0, nullptr, 0); ILFree(item);
         if (FAILED(result)) throw std::runtime_error("Не удалось открыть Проводник.");
     }
+    static void open_folder(const std::filesystem::path& path) {
+        validate_local_path(path, false);
+        if (!std::filesystem::is_directory(path)) throw std::runtime_error("Папка результатов больше недоступна.");
+        SHELLEXECUTEINFOW request{sizeof(request)}; request.fMask = SEE_MASK_FLAG_NO_UI;
+        request.lpVerb = L"open"; request.lpFile = path.c_str(); request.nShow = SW_SHOWNORMAL;
+        if (!ShellExecuteExW(&request)) throw std::runtime_error("Не удалось открыть папку в Проводнике.");
+    }
     void add_tray() {
         NOTIFYICONDATAW icon{sizeof(icon)}; icon.hWnd = window_; icon.uID = 1;
         icon.uFlags = NIF_MESSAGE | NIF_ICON | tray_tooltip_flags; icon.uCallbackMessage = wm_tray;
@@ -318,15 +336,17 @@ private:
         NOTIFYICONDATAW icon{sizeof(icon)}; icon.hWnd = window_; icon.uID = 1; icon.uFlags = tray_tooltip_flags;
         wcsncpy_s(icon.szTip, text, _TRUNCATE); Shell_NotifyIconW(NIM_MODIFY, &icon);
     }
-    void balloon(const std::wstring& title, const std::wstring& message, DWORD type, const std::filesystem::path& target = {}) {
-        notifications_.push({title,message,type,target});
+    void balloon(const std::wstring& title, const std::wstring& message, DWORD type, const std::filesystem::path& target = {}, const std::filesystem::path& folder = {}) {
+        notifications_.push({title,message,type,target,folder});
         PostMessageW(window_,wm_next_notification,0,0);
     }
     void next_notification() {
         if(!tray_) return;
         while(notifications_.begin()) {
             const auto& next=*notifications_.current();
-            NOTIFYICONDATAW icon{sizeof(icon)}; icon.hWnd=window_; icon.uID=1; icon.uFlags=NIF_INFO; icon.dwInfoFlags=next.type;
+            QUERY_USER_NOTIFICATION_STATE state{};
+            if (!next.folder.empty() && SUCCEEDED(SHQueryUserNotificationState(&state)) && state == QUNS_ACCEPTS_NOTIFICATIONS && completion_notice_.show(next)) return;
+            NOTIFYICONDATAW icon{sizeof(icon)}; icon.hWnd=window_; icon.uID=1; icon.uFlags=NIF_INFO; icon.dwInfoFlags=next.type | NIIF_RESPECT_QUIET_TIME;
             wcsncpy_s(icon.szInfoTitle,next.title.c_str(),_TRUNCATE); wcsncpy_s(icon.szInfo,next.message.c_str(),_TRUNCATE);
             if(Shell_NotifyIconW(NIM_MODIFY,&icon)) return;
             notifications_.finish();
@@ -432,16 +452,22 @@ private:
         if (message == WM_NCCREATE) { self = static_cast<App*>(reinterpret_cast<CREATESTRUCTW*>(l)->lpCreateParams); SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(self)); }
         if (!self) return DefWindowProcW(hwnd, message, w, l);
         if (self->taskbar_created_ && message == self->taskbar_created_) {
-            self->notifications_.restart(); self->add_tray(); PostMessageW(hwnd,wm_next_notification,0,0); return 0;
+            self->completion_notice_.hide(); self->notifications_.restart(); self->add_tray(); PostMessageW(hwnd,wm_next_notification,0,0); return 0;
         }
         try { switch (message) {
         case wm_tray:
             if (LOWORD(l) == WM_CONTEXTMENU || LOWORD(l) == WM_RBUTTONUP) self->menu();
             if (LOWORD(l) == WM_LBUTTONDBLCLK) { self->refresh(); self->panel_.show(); }
             if(LOWORD(l)==NIN_BALLOONUSERCLICK || LOWORD(l)==NIN_BALLOONHIDE || LOWORD(l)==NIN_BALLOONTIMEOUT) {
+                if (self->completion_notice_.visible()) return 0;
+                const auto active = self->notifications_.current();
+                const auto folder = active ? active->folder : std::filesystem::path{};
                 const auto target=self->notifications_.finish();
                 PostMessageW(hwnd,wm_next_notification,0,0);
-                if(LOWORD(l)==NIN_BALLOONUSERCLICK && !target.empty()) self->reveal(target);
+                if (LOWORD(l)==NIN_BALLOONUSERCLICK) {
+                    if (!folder.empty()) open_folder(folder);
+                    else if (!target.empty()) self->reveal(target);
+                }
             }
             return 0;
         case wm_next_notification: self->next_notification(); return 0;
@@ -535,6 +561,7 @@ private:
     Gesture gesture_;
     Worker worker_;
     ControlPanel panel_;
+    CompletionNotice completion_notice_;
     Settings settings_;
     std::unique_ptr<DiagnosticLog> diagnostic_;
     JobQueue queue_;

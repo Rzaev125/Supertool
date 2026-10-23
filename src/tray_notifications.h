@@ -7,13 +7,18 @@
 #include <string>
 namespace shiftwheel {
 inline constexpr UINT tray_tooltip_flags = NIF_TIP | NIF_SHOWTIP;
+inline std::filesystem::path completion_folder(const std::filesystem::path& output, size_t files, bool directory_output) {
+    if (output.empty()) return {};
+    return files > 1 || !directory_output ? output.parent_path() : output;
+}
 struct TrayNotification {
     std::wstring title, message;
     DWORD type = NIIF_INFO;
     std::filesystem::path target;
+    std::filesystem::path folder;
 };
-// Only one balloon is submitted to the shell at a time. Its click target stays
-// stable until a terminal callback; later results wait in the application.
+// Only one completion popup or shell balloon is active at a time. Its action
+// target stays stable until a terminal callback; later results wait here.
 class TrayNotifications {
 public:
     void push(TrayNotification notification) { pending_.push_back(std::move(notification)); }

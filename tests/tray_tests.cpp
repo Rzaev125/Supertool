@@ -19,6 +19,16 @@ int main() {
         queue.restart();
         check(queue.begin() && queue.finish() == L"b.jpg","Explorer restart lost pending target");
         check(!queue.begin(),"duplicate notification");
+        check(completion_folder(L"D:\\batch\\one.jpg",2,false)==L"D:\\batch","batch action must open common result folder");
+        check(completion_folder(L"D:\\batch\\pages-png",2,true)==L"D:\\batch","PDF batch action must open common root, not last PDF pages");
+        check(completion_folder(L"D:\\photos\\one.jpg",1,false)==L"D:\\photos","single result opens containing folder");
+        check(completion_folder(L"D:\\docs\\pages-png",1,true)==L"D:\\docs\\pages-png","single PDF action opens actual page folder");
+        check(completion_folder({},2,false).empty(),"failed batch must not offer an output action");
+        queue.push({L"first",L"ready",NIIF_INFO,L"D:\\first\\one.jpg",L"D:\\first"});
+        queue.push({L"second",L"ready",NIIF_INFO,L"D:\\second\\two.jpg",L"D:\\second"});
+        check(queue.begin() && queue.current()->folder==L"D:\\first","first folder bound to first notification");
+        check(!queue.begin() && queue.current()->folder==L"D:\\first","later batch cannot overwrite active button folder");
+        queue.finish();check(queue.begin() && queue.current()->folder==L"D:\\second","next folder retained");queue.finish();
         std::cout << "PASS tray tooltip and serialized notification targets\n";
     } catch(const std::exception& e) { std::cerr<<e.what()<<'\n';return 1; }
 }
