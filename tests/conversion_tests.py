@@ -306,7 +306,7 @@ def formats_tests():
                 assert all(180 <= c <= 195 for c in pixel[:3]) and pixel[3] == 128, (source_type,target,pixel)
     animated = root / 'animated.webp'
     image.save(animated, save_all=True, append_images=[Image.new('RGBA',image.size,'blue')], duration=100, loop=0)
-    convert(animated, 'png', fail=True)
+    convert(animated, 'png')
     multipage = root / 'multipage.tiff'; image.save(multipage,save_all=True,append_images=[image])
     convert(multipage, 'png', fail=True)
     for kind in ['webp','tiff']:

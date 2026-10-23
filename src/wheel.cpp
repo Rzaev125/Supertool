@@ -68,7 +68,7 @@ void Wheel::show(POINT point, bool preview) {
     if (!window_) return;
     const bool was_visible = IsWindowVisible(window_) != FALSE;
     update_animation_setting();
-    preview_ = preview; acceptable_ = false; ole_active_ = false; file_.clear(); files_.clear(); hovered_ = -1;
+    first_frame_hint_=false; preview_ = preview; acceptable_ = false; ole_active_ = false; file_.clear(); files_.clear(); hovered_ = -1;
     formats_ = preview ? common_formats({L"preview.png"}) : std::vector<Format>{};
     highlights_.assign(formats_.size(), {});
     open_ = true;
@@ -189,6 +189,7 @@ HRESULT STDMETHODCALLTYPE Wheel::DragEnter(IDataObject* data, DWORD keys, POINTL
     file_.clear();
     acceptable_ = read_files(data, files_);
     if (!files_.empty()) file_ = files_.front();
+    first_frame_hint_=std::any_of(files_.begin(),files_.end(),[](const auto& p){if(category(p)!=Category::Image)return false;auto f=parse_format(p.extension().wstring());return f==Format::Gif||f==Format::Webp;});
     formats_ = common_formats(files_);
     acceptable_ = acceptable_ && !formats_.empty();
     highlights_.assign(formats_.size(), {}); hovered_ = -1;
@@ -263,7 +264,7 @@ void Wheel::draw(ID2D1RenderTarget* target, ID2D1SolidColorBrush* brush) {
         text(label(formats_[i]), large_text_.Get(), D2D1::RectF(center.x - 55, center.y - 26, center.x + 55, center.y + 6), color);
         const auto hint = category(file_) == Category::Presentation && (folder_output(file_, formats_[i]) || formats_[i] == Format::Pdf) ? L"Все слайды" :
             folder_output(file_, formats_[i]) && category(file_) == Category::Pdf ? L"Все страницы" :
-            category(file_) == Category::Pdf && formats_[i] == Format::Txt ? L"Текст / OCR" : caption(formats_[i]);
+            category(file_) == Category::Pdf && formats_[i] == Format::Txt ? L"Текст / OCR" : caption(formats_[i],first_frame_hint_);
         text(hint, small_text_.Get(), D2D1::RectF(center.x - 58, center.y + 5, center.x + 58, center.y + 24), 0xb2bbc6);
     }
     brush->SetColor(D2D1::ColorF(0x10151e)); target->FillEllipse(D2D1::Ellipse(D2D1::Point2F(160, 160), 62, 62), brush);
@@ -323,6 +324,7 @@ LRESULT CALLBACK Wheel::window_proc(HWND hwnd, UINT message, WPARAM w, LPARAM l)
 }
 HRESULT Wheel::render_preview(const fs::path& output, const fs::path& sample) {
     file_ = sample; formats_ = formats_for(sample);
+    first_frame_hint_=category(sample)==Category::Image&&(parse_format(sample.extension().wstring())==Format::Gif||parse_format(sample.extension().wstring())==Format::Webp);
     ComPtr<IWICImagingFactory> wic; ComPtr<IWICBitmap> bitmap; ComPtr<ID2D1RenderTarget> target;
     HRESULT hr = CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wic));
     if (FAILED(hr)) return hr;

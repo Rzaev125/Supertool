@@ -36,7 +36,7 @@ void require_conversion_engines(const fs::path& input, Format format) {
     require_engine(category(input));
     if (category(input) == Category::Presentation && (format == Format::Png || format == Format::Jpeg)) require_engine(Category::Pdf);
     if (category(input) != Category::Image) return;
-    if (format == Format::Webp || parse_format(input.extension().wstring()) == Format::Webp) require_engine(Category::Video);
+    if (format == Format::Gif || parse_format(input.extension().wstring()) == Format::Gif || format == Format::Webp || parse_format(input.extension().wstring()) == Format::Webp) require_engine(Category::Video);
     for (bool encode : {false, true}) {
         const bool needed = encode ? format == Format::Avif : parse_format(input.extension().wstring()) == Format::Avif;
         if (needed && !fs::is_regular_file(avif_module(encode)))

@@ -32,9 +32,11 @@ int main() {
         check(!can_accept(true, true, 1, true, 0, true), "busy rejected");
     });
     run("supported extensions", [] {
+        check(std::wstring(caption(Format::Png,true))==L"Первый кадр","static animation target is explicit");
+        check(std::wstring(caption(Format::Gif,true))!=L"Первый кадр","GIF keeps animation");
         check(supported_input(L"Photo.PNG"), "case insensitive PNG");
         check(supported_input(L"Photo.jpeg"), "JPEG");
-        check(!supported_input(L"animated.gif"), "animation not claimed");
+        check(supported_input(L"animated.gif"), "GIF input admitted");
         for (auto path : {L"report.docx", L"table.XLSX", L"report.pdf", L"clip.MP4", L"song.flac"})
             check(supported_input(path), "new category must be admitted");
     });
@@ -58,7 +60,7 @@ int main() {
         check(category(L"photo.AVIF") == Category::Image, "AVIF is an image");
         const auto avif = parse_format(L"AVIF");
         check(std::wstring(label(avif)) == L"AVIF", "AVIF label");
-        check(formats_for(L"photo.png").size() == 7, "image wheel includes HEIC");
+        check(formats_for(L"photo.png").size() == 8, "image wheel includes HEIC");
         check(supports_conversion(L"photo.png", avif), "PNG to AVIF");
         check(supports_conversion(L"photo.avif", Format::Png), "AVIF to PNG");
         check(!supports_conversion(L"clip.mp4", avif), "video not routed to still AVIF");

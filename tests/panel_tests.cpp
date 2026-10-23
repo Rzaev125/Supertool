@@ -194,7 +194,7 @@ int main(int argc,char** argv) {
         auto section=child(window,227);SendMessageW(section,CB_SETCURSEL,2,0);
         SendMessageW(window,WM_COMMAND,MAKEWPARAM(227,CBN_SELCHANGE),reinterpret_cast<LPARAM>(section));
         HWND formats = child(window, Formats);
-        check(ListView_GetItemCount(formats) == 7, "all image formats displayed");
+        check(ListView_GetItemCount(formats) == 8, "all image formats including GIF displayed");
         select(formats, 0); click(child(window, MoveDown));
         click(child(window, Apply));
         check(saved_settings.wheels.at(Category::Image).front() == Format::Png, "visible order changed and saved");
