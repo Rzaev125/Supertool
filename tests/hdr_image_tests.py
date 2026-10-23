@@ -94,7 +94,8 @@ for transfer in ['pq', 'hlg']:
             encoded = encode(source, kind, transfer, depth, f'{transfer}-{kind}-{depth}')
             raw_path, (w, h, decoded) = decoded16(encoded)
             assert (w, h) == (width, height)
-            # Detect range truncation, decoder tone mapping or premature8-bit decode.
+            # Broad lossy-chart range/tone check. Dense lossless precision and
+            # padded8-bit mutation rejection live in hdr_precision_tests.py.
             for x, y in [(35, 4), (55, 4), (65, 4)]:
                 a, b = decoded[y * w + x], codes[y * w + x]
                 assert max(abs(a[i] - b[i]) for i in range(3)) <= 256, ('unexpected decoder precision/range', kind, depth, a, b)
