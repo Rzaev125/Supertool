@@ -29,14 +29,18 @@
 секрета не читалось обратно: проверены успешная запись и metadata имени/времени,
 а соответствие пары подтверждено локально до передачи.
 
-На GitHub main добавлен только ручной workflow
+На GitHub main добавлен ручной workflow
 `.github/workflows/verify-update-key.yml`, commit
 `a8b708a9b5dfc44f93b1939fdbccfe99d644d1e0`. Он проверяет соответствие pin,
 P-256/P1363 подпись и отказ изменённым данным, выводит только публичные ID/fingerprint.
 В нём нет checkout, сторонних actions, загрузки артефактов или выпуска приложения.
 Проверка зарегистрирована GitHub как active:
 [Verify update signing key](https://github.com/Rzaev125/Supertool/actions/workflows/verify-update-key.yml).
-Сам workflow не запускался; его PowerShell-тело выполнено локально с реальным ключом — PASS.
+Удалённый запуск [40010628834](https://github.com/Rzaev125/Supertool/actions/runs/40010628834)
+завершился **success** 2026-10-23. Шаг проверки P-256/pin/P1363 прошёл на
+windows-2022 после подтверждения environment от имени настроенного владельца
+по его поручению. Правила защиты environment сохранены.
+Его PowerShell-тело также выполнено локально с реальным ключом — PASS.
 
 Для удалённой проверки: Actions → Verify update signing key → Run workflow,
 затем подтвердить environment release. Это проверка ключа, не публикация.
@@ -48,11 +52,23 @@ P-256/P1363 подпись и отказ изменённым данным, вы
 манифесты. Проверочные файлы находятся только в build/production-update-key-check;
 каналы updates/stable*.txt и готовые пакеты0.15 не менялись.
 
-На удалённом main пока нет полного `.github/workflows/release.yml`. Его локальная
-версия уже использует эти3 значения, но публикация актуальных исходников/release
-workflow и подключение Windows Code Signing остаются отдельными шагами.
+Полный [release workflow](https://github.com/Rzaev125/Supertool/actions/workflows/release.yml)
+перенесён в main вместе с актуальными исходниками0.15, тестами и скриптами,
+на которые он ссылается. Он использует все3 значения environment, запускается
+вручную и по умолчанию имеет `publish=false`. Полный release workflow ещё не
+запускался: Windows Code Signing не подключён. Для текущего PFX-адаптера нужны
+`CODE_SIGN_PFX_BASE64` и `CODE_SIGN_PFX_PASSWORD`; при выборе аппаратного/облачного
+подписания потребуется соответствующий адаптер вместо импорта PFX.
+
+Перед переносом проверены наличие официальных actions checkout/setup-python/
+upload-artifact v7 и согласованность версий0.15 (`release_config_tests.py` — PASS).
+Оба workflow прошли actionlint1.7.12 (YAML и выражения; shellcheck/pyflakes
+отключены). Архив официального валидатора сверён с опубликованным SHA256.
+Проверка отслеживаемых файлов не обнаружила блоков приватного PEM.
+Удалённые изменения main сохранены merge-коммитом; каналы обновлений не меняются.
 Обычные пакеты0.15 по-прежнему не содержат production pin и не имеют Authenticode.
 Подключение ключа к GitHub само по себе не меняет доверие уже собранных EXE.
 
 Локальные несекретные отчёты: build/production-update-key-github.json и
 build/production-update-key-workflow-github.json. Приватного PEM в этих файлах нет.
+Результат удалённого запуска: build/github-update-key-run.json.
