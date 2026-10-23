@@ -1,6 +1,7 @@
 """Container display transforms checked against independent Pillow pixel operations."""
 import argparse
 import hashlib
+import math
 import struct
 import subprocess
 import tempfile
@@ -137,8 +138,62 @@ for target in ['avif', 'heic', 'gif']:
                 a = normalized.getpixel((x, y))
                 opaque_error.extend(abs(a[i] - b[i]) for i in range(3))
     assert sum(opaque_error) / len(opaque_error) < 15, target
+def area_reference(image, size):
+    """Independent area integration in premultiplied RGBA, not WIC/FFmpeg."""
+    out = Image.new('RGBA', size)
+    sx, sy = image.width / size[0], image.height / size[1]
+    for y in range(size[1]):
+        for x in range(size[0]):
+            sums = [0.0] * 4
+            for iy in range(math.floor(y * sy), math.ceil((y + 1) * sy)):
+                wy = min((y + 1) * sy, iy + 1) - max(y * sy, iy)
+                for ix in range(math.floor(x * sx), math.ceil((x + 1) * sx)):
+                    weight = wy * (min((x + 1) * sx, ix + 1) - max(x * sx, ix))
+                    pixel = image.getpixel((min(ix, image.width - 1), min(iy, image.height - 1)))
+                    for channel in range(3):
+                        sums[channel] += pixel[channel] * pixel[3] / 255 * weight
+                    sums[3] += pixel[3] * weight
+            alpha = sums[3] / (sx * sy)
+            rgb = [round(value * 255 / sums[3]) if sums[3] else 0 for value in sums[:3]]
+            out.putpixel((x, y), (*rgb, round(alpha)))
+    return out
+
+
+def check_resize(actual, reference):
+    assert actual.size == reference.size
+    alpha_error = ImageChops.difference(actual.getchannel('A'), reference.getchannel('A'))
+    assert alpha_error.getextrema()[1] <= 1, 'resized alpha content changed'
+    errors = []
+    for y in range(reference.height):
+        for x in range(reference.width):
+            a, b = actual.getpixel((x, y)), reference.getpixel((x, y))
+            if b[3]:
+                errors.extend(abs(a[i] - b[i]) for i in range(3))
+    # Fant and exact area integration differ around discontinuities in this
+    # wrapped color chart. Bound every error, mean and 95th percentile together.
+    errors.sort()
+    assert errors[-1] <= 24 and sum(errors) / len(errors) <= 2, 'resized RGB content changed'
+    assert errors[int(len(errors) * .95)] <= 4, 'resized RGB regions changed'
+    for x, y in [(3, 3), (15, 6), (4, 10), (17, 20)]:
+        a, b = actual.getpixel((x, y)), reference.getpixel((x, y))
+        assert b[3] and max(abs(a[i] - b[i]) for i in range(3)) <= 5, 'resized landmark changed'
+
+
 small = pixels(convert(rotated, image_max_dimension='32'))
-assert small.size == (21, 32), small.size
+reference = area_reference(expected, (21, 32))
+check_resize(small, reference)
+# Same dimensions alone would accept these wrong images. Prove the new check
+# detects reversed content, reversed transparency and an opaque replacement.
+opaque = small.copy()
+opaque.putalpha(255)
+for damaged in [small.transpose(Image.Transpose.FLIP_LEFT_RIGHT),
+                small.transpose(Image.Transpose.FLIP_TOP_BOTTOM), opaque]:
+    try:
+        check_resize(damaged, reference)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError('resize checker accepted a same-size corrupted image')
 
 # ICC conversion is pointwise and must commute with a display transform.
 profile = bytearray(ImageCms.ImageCmsProfile(ImageCms.createProfile('sRGB')).tobytes())
