@@ -37,7 +37,7 @@ int main() {
         const auto s = load_settings(root / "missing.ini");
         check(s.conversion.quality == QualityPreset::Balanced && s.conversion.resources == ResourceMode::Balanced && s.conversion.pdf_dpi == 144, "legacy defaults changed");
         check(s.conversion.image_max_dimension == 0 && s.conversion.video_max_height == 0 && s.conversion.audio_bitrate_kbps == 0, "default override");
-        check(s.output_directory.empty() && !s.auto_show_progress && configured_formats(L"photo.png", s).size() == 7, "quiet default missing");
+        check(s.output_directory.empty() && !s.auto_show_progress && configured_formats(L"photo.png", s).size() == 8, "quiet default missing");
         check(s.conversion.pdf_ocr && s.conversion.ocr_languages == "eng+rus+aze", "OCR language defaults");
         rejected([&] { load_options(root / "missing-options.ini"); });
     });

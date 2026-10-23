@@ -1,6 +1,7 @@
 """Exercise actual packaging entry points on tiny isolated release trees."""
-import hashlib,json,pathlib,shutil,subprocess,uuid
+import hashlib,json,pathlib,shutil,subprocess,uuid,re
 ROOT=pathlib.Path(__file__).resolve().parents[1]
+VERSION=re.search(r'project\(ShiftWheel VERSION ([0-9.]+)',(ROOT/'CMakeLists.txt').read_text()).group(1)
 WORK=ROOT/'build'/('package-policy-'+uuid.uuid4().hex)
 def digest(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 def run(script,*args):
@@ -27,7 +28,7 @@ for kind in ['extra','modified','valid']:
  ok=r.returncode==0 if kind=='valid' else r.returncode!=0
  if not ok:failures.append(kind+': packaging accepted unexpected/modified bytes' if kind!='valid' else 'valid package rejected: '+r.stderr.decode(errors='replace'))
  if kind=='valid':
-  packed=p/'out/ShiftWheel-0.9.0-full/modules'
+  packed=p/f'out/ShiftWheel-{VERSION}-full/modules'
   assert (packed/'ffmpeg/ffmpeg.exe').read_bytes()==b'engine fixture'
   args=['-ModuleRoot',packed,'-InventoryDirectory',p/'build/module-packages','-CatalogPath',p/'resources/module_catalog.json','-Destination',p/'build/validation-only','-PackagedSource','-ValidateOnly']
   assert run(p/'scripts/stage-modules.ps1',*args).returncode==0,'valid packaged module validation'
@@ -41,11 +42,11 @@ for kind,requested,metadata in [('full-labelled-core','core','full'),('core-labe
  p=WORK/kind;p.mkdir(parents=True)
  shutil.copyfile(ROOT/'build/Release/ShiftWheel.exe',p/'ShiftWheel.exe')
  if metadata!='core':(p/'modules').mkdir()
- release=dict(version='0.9.0',executable_sha256=digest(p/'ShiftWheel.exe'))
+ release=dict(version=VERSION,executable_sha256=digest(p/'ShiftWheel.exe'))
  if metadata is not None:release['distribution']=metadata
  (p/'release.json').write_text(json.dumps(release))
  isolated=ROOT/'build/installer-tests'/(WORK.name+'-'+kind)
- r=run(ROOT/'scripts/build-installer.ps1','-Version','0.9.0','-Distribution',requested,'-PayloadDirectory',p,'-TestRoot',isolated)
+ r=run(ROOT/'scripts/build-installer.ps1','-Version',VERSION,'-Distribution',requested,'-PayloadDirectory',p,'-TestRoot',isolated)
  ok=r.returncode==0 if kind=='valid-core' else r.returncode!=0 and b'distribution' in (r.stdout+r.stderr).lower()
  if not ok:failures.append(kind+': distribution contract not enforced')
  print(kind,'PASS' if ok else 'FAIL',flush=True)

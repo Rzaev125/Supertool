@@ -45,6 +45,7 @@ private:
     HWND window_ = nullptr;
     bool registered_ = false, preview_ = false, acceptable_ = false;
     bool ole_active_ = false;
+    bool first_frame_hint_ = false;
     bool open_ = false, animations_ = true;
     UINT_PTR animation_timer_ = 0;
     int last_alpha_ = -1;

@@ -24,7 +24,7 @@ bool can_accept(bool shift, bool copy, std::size_t files, bool supported, int se
 Category category(const std::filesystem::path& path) {
     auto ext = lower(path.extension().wstring());
     auto in = [&](std::initializer_list<const wchar_t*> values) { return std::any_of(values.begin(), values.end(), [&](auto value) { return ext == value; }); };
-    if (in({L".png", L".jpg", L".jpeg", L".bmp", L".avif", L".webp", L".tif", L".tiff", L".heic", L".heif"})) return Category::Image;
+    if (in({L".png", L".jpg", L".jpeg", L".bmp", L".avif", L".webp", L".tif", L".tiff", L".heic", L".heif", L".gif"})) return Category::Image;
     if (in({L".mp4", L".mkv", L".webm", L".mov", L".avi", L".m4v", L".wmv", L".mpeg", L".mpg"})) return Category::Video;
     if (in({L".mp3", L".wav", L".flac", L".m4a", L".aac", L".ogg", L".opus", L".wma", L".aiff", L".aif"})) return Category::Audio;
     if (in({L".docx", L".doc", L".odt", L".rtf"})) return Category::Document;
@@ -37,7 +37,7 @@ bool supported_input(const std::filesystem::path& path) { return category(path) 
 std::vector<Format> formats_for(const std::filesystem::path& path) {
     using enum Format;
     switch (category(path)) {
-    case Category::Image: return {Jpeg, Png, Bmp, Avif, Webp, Tiff, Heic};
+    case Category::Image: return {Jpeg, Png, Bmp, Avif, Webp, Tiff, Heic, Gif};
     case Category::Video: return {Mp4, Mkv, Webm, Mp3, Wav, Mov};
     case Category::Audio: return {Mp3, Wav, Flac, M4a, Ogg, Opus, Aac};
     case Category::Document: return {Pdf, Docx, Odt, Rtf, Txt};
@@ -98,6 +98,7 @@ const wchar_t* extension(Format format) {
     case Format::Heic: return L".heic";
     case Format::Pptx: return L".pptx";
     case Format::Odp: return L".odp";
+    case Format::Gif: return L".gif";
     }
     return L"";
 }
@@ -107,23 +108,25 @@ Format parse_format(std::wstring_view id) {
     if (value == L".jpeg") value = L".jpg";
     if (value == L".tif") value = L".tiff";
     if (value == L".heif") value = L".heic";
-    for (int i = 0; i <= static_cast<int>(Format::Odp); ++i)
+    for (int i = 0; i <= static_cast<int>(Format::Gif); ++i)
         if (value == extension(static_cast<Format>(i))) return static_cast<Format>(i);
     throw std::runtime_error("Неизвестный выходной формат.");
 }
 const wchar_t* label(Format format) {
-    static constexpr const wchar_t* labels[]{L"JPG", L"PNG", L"BMP", L"MP4", L"MKV", L"WebM", L"MP3", L"WAV", L"FLAC", L"M4A", L"OGG", L"PDF", L"DOCX", L"ODT", L"RTF", L"TXT", L"XLSX", L"ODS", L"CSV", L"AVIF", L"WebP", L"TIFF", L"Opus", L"AAC", L"MOV", L"HEIC", L"PPTX", L"ODP"};
+    static constexpr const wchar_t* labels[]{L"JPG", L"PNG", L"BMP", L"MP4", L"MKV", L"WebM", L"MP3", L"WAV", L"FLAC", L"M4A", L"OGG", L"PDF", L"DOCX", L"ODT", L"RTF", L"TXT", L"XLSX", L"ODS", L"CSV", L"AVIF", L"WebP", L"TIFF", L"Opus", L"AAC", L"MOV", L"HEIC", L"PPTX", L"ODP", L"GIF"};
     auto i = static_cast<unsigned>(format);
     return i < std::size(labels) ? labels[i] : L"?";
 }
-const wchar_t* caption(Format format) {
+const wchar_t* caption(Format format,bool first_frame) {
+    if(first_frame&&format!=Format::Gif&&format!=Format::Webp)return L"Первый кадр";
     switch (format) {
     case Format::Jpeg: return L"Белый фон";
     case Format::Png: return L"Без потерь";
     case Format::Bmp: return L"Без сжатия";
     case Format::Avif: return L"Компактное фото";
     case Format::Heic: return L"Фото HEVC";
-    case Format::Webp: return L"Для веба";
+    case Format::Webp: return L"Фото / анимация";
+    case Format::Gif: return L"256 цветов";
     case Format::Tiff: return L"Без потерь";
     case Format::Mp4: case Format::Mkv: case Format::Mov: return L"H.264 · AAC";
     case Format::Webm: return L"VP9 · Opus";

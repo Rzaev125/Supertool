@@ -2,7 +2,7 @@
 $ErrorActionPreference='Stop'
 Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1') -Force
 $root=Split-Path $PSScriptRoot -Parent
-$version='0.9.0'
+$version='0.10.0'
 $exe=Join-Path $root "build\$Configuration\ShiftWheel.exe"
 if((Get-Item -LiteralPath $exe).VersionInfo.ProductVersion -ne $version){throw 'Build the matching version first.'}
 # Fresh release tree; never remove engines or state from a portable user's folder.
@@ -14,7 +14,7 @@ Copy-Item -LiteralPath $exe -Destination $destination
 Copy-Item -LiteralPath (Join-Path $root 'README.md') -Destination $destination
 Copy-Item -LiteralPath (Join-Path $root 'resources\START.txt') -Destination $destination
 $docs=Join-Path $destination 'docs';[void][IO.Directory]::CreateDirectory($docs)
-foreach($file in @('performance-0.9.md','performance-0.9.json','modules-0.9.md','modules.md','heic-module.md','presentation-module.md','ocr-module.md','installer.md','hardware-video.md','updates.md','signing.md','recovery.md','acceptance-0.7.0.md','acceptance-0.8.0.md','acceptance-0.9.0.md')){
+foreach($file in @('animated-images.md','acceptance-0.10.0.md','performance-0.9.md','performance-0.9.json','modules-0.9.md','modules.md','heic-module.md','presentation-module.md','ocr-module.md','installer.md','hardware-video.md','updates.md','signing.md','recovery.md','acceptance-0.7.0.md','acceptance-0.8.0.md','acceptance-0.9.0.md')){
  Copy-Item -LiteralPath (Join-Path $root ('docs\'+$file)) -Destination $docs
 }
 Copy-Item -LiteralPath (Join-Path $root 'docs\verification.md') -Destination (Join-Path $destination 'VERIFICATION.md')

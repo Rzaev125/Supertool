@@ -1,3 +1,4 @@
+#include "animation_converter.h"
 #include "module_paths.h"
 #include "converter.h"
 #include "diagnostics.h"
@@ -87,7 +88,8 @@ void convert_file(const fs::path& input_path, const fs::path& output_path, const
         (format == Format::Webp || parse_format(input.extension().wstring()) == Format::Webp);
     const bool heic = category(input) == Category::Image &&
         (format == Format::Heic || parse_format(input.extension().wstring()) == Format::Heic);
-    if (category(input) == Category::Image && !avif && !webp && !heic) {
+    const bool animation=category(input)==Category::Image&&(format==Format::Gif||animation_input(input));
+    if (category(input) == Category::Image && !avif && !webp && !heic && !animation) {
         report_progress(-1, L"Преобразование изображения");
         const bool tiff = format == Format::Tiff || parse_format(input.extension().wstring()) == Format::Tiff;
         convert_image(input, output, work, tiff ? ImageColor::ToSrgb : ImageColor::Unmanaged, options); return;
@@ -110,7 +112,8 @@ void convert_file(const fs::path& input_path, const fs::path& output_path, const
     switch (category(input)) {
     case Category::Image:
         report_progress(-1, L"Преобразование изображения");
-        if (heic) convert_heic(input, result, format, work, options);
+        if (animation) convert_animation(input,result,format,work,options);
+        else if (heic) convert_heic(input, result, format, work, options);
         else if (webp) convert_webp(input, result, format, work, options);
         else convert_avif(input, result, format, work, options);
         break;

@@ -5,7 +5,7 @@ on:
       version:
         description: Version already committed in CMake and resources
         required: true
-        default: '0.9.0'
+        default: '0.10.0'
       publish:
         description: Publish verified packages and then update channels
         type: boolean
@@ -45,7 +45,7 @@ jobs:
           if ($LASTEXITCODE) { throw 'Test dependencies failed.' }
           python scripts/ci-bootstrap.py
           if ($LASTEXITCODE) { throw 'Verified engine bootstrap failed.' }
-          python scripts/build-modules.py --version $env:RELEASE_VERSION --verify-only
+          python scripts/build-modules.py --verify-only
           if ($LASTEXITCODE) { throw 'Committed module package verification failed.' }
       - name: Configure, build and test
         run: |
