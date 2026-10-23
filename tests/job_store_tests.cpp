@@ -26,6 +26,10 @@ int main(){try{
  auto invalid_metadata=queue.snapshot();invalid_metadata.jobs[0].options.image_metadata=static_cast<ImageMetadata>(99);
  reject([&]{save_queue(path,invalid_metadata);});
  check(load_queue(path)->jobs[0].options.image_metadata==ImageMetadata::CaptureDate,"invalid metadata replaced good snapshot");
+ auto photo_snapshot=*snapshot;photo_snapshot.jobs[0].options.image_metadata=ImageMetadata::PhotoDetails;
+ save_queue(dir/L"photo.dat",photo_snapshot);
+ check(load_queue(dir/L"photo.dat")->jobs[0].options.image_metadata==ImageMetadata::PhotoDetails,"photo details queue mode lost");
+ std::filesystem::remove(dir/L"photo.dat");
  JobQueue restored;restored.restore(*snapshot);
  check(restored.paused()&&!restored.next(),"recovered queue automatically starts");
  check(restored.items()[0].state==JobState::Interrupted,"active job replayed");

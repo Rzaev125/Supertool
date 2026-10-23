@@ -149,7 +149,7 @@ int main() {
     });
     run("capture date settings, defaults and worker snapshots", [&] {
         const auto file=root/"metadata.ini";
-        for(const auto mode : {"remove","capture_date"}) {
+        for(const auto mode : {"remove","capture_date","photo_details"}) {
             write(file,std::string("version=1\nimage_metadata=")+mode+"\n");
             auto settings=load_settings(file);
             const auto saved=root/(std::string(mode)+"-metadata.ini"), snapshot=root/(std::string(mode)+"-metadata.options");

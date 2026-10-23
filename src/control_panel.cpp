@@ -202,8 +202,8 @@ struct ControlPanel::Impl {
         label_control(AudioLabel, L"Битрейт аудио, кбит/с (0 — авто)"); number(AudioBitrate);
         label_control(PdfLabel, L"PDF в изображение, DPI"); number(PdfDpi);
         label_control(AccelerationLabel, L"Ускорение кодирования"); combo(Acceleration);
-        label_control(ImageMetadataLabel, L"Дата съёмки: JPEG/TIFF → JPEG/TIFF"); combo(ImageMetadataChoice);
-        for (const auto value : {L"Удалять EXIF/XMP", L"Сохранять только дату съёмки"}) SendMessageW(setting(ImageMetadataChoice), CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
+        label_control(ImageMetadataLabel, L"Метаданные фото (без GPS)"); combo(ImageMetadataChoice);
+        for (const auto value : {L"Удалять EXIF/XMP", L"Сохранять только дату съёмки", L"Дата, автор и copyright"}) SendMessageW(setting(ImageMetadataChoice), CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
         label_control(CodecLabel, L"Видеокодек"); combo(Codec);
         for (const auto value : {L"По формату: H.264 / VP9", L"H.264 — MP4 / MKV / MOV", L"HEVC — MP4 / MKV / MOV", L"AV1 — MP4 / MKV / WebM"}) SendMessageW(setting(Codec), CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
         for (const auto value : {L"Автоматически (GPU / CPU)", L"Только процессор (CPU)"}) SendMessageW(setting(Acceleration), CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
@@ -497,7 +497,7 @@ struct ControlPanel::Impl {
         if (acceleration < 0 || acceleration > 1) { settings_error(L"Выберите режим кодирования видео."); return false; }
         result.conversion.video_acceleration = static_cast<VideoAcceleration>(acceleration);
         const auto metadata = SendMessageW(setting(ImageMetadataChoice), CB_GETCURSEL, 0, 0);
-        if (metadata < 0 || metadata > 1) { settings_error(L"Выберите режим метаданных изображения."); return false; }
+        if (metadata < 0 || metadata > 2) { settings_error(L"Выберите режим метаданных изображения."); return false; }
         result.conversion.image_metadata = static_cast<ImageMetadata>(metadata);
         const auto codec = SendMessageW(setting(Codec), CB_GETCURSEL, 0, 0);
         if (codec < 0 || codec > 3) { settings_error(L"Выберите видеокодек."); return false; }

@@ -8,7 +8,7 @@
 
 **Tech Stack:** C++20/Win32/WIC/pinned libheif1.23.6, Python/Pillow/ctypes real fixtures.
 
-**Spec:** docs/superpowers/specs/2026-10-23-heic-exif-metadata-design.md. User approved development; metadata subset is a disclosed builder choice while optional question unanswered.
+**Spec:** docs/superpowers/specs/2026-10-23-heic-exif-metadata-design.md. User approved development; user confirmed date, author and copyright without GPS.
 
 ## Global constraints
 
@@ -28,19 +28,19 @@
 
 ### Task1: HEIC orientation and bounded semantic parser
 
-- [ ] Baseline focused tests, design builder check completed.
-- [ ] Add real HEIC fixtures with attached EXIF after encoding: all8, primary transforms/identity/crop combinations, both byte orders, malformed/duplicate/multiple EXIF; observe current refusal RED.
-- [ ] Extend image_exif semantic file/span parser and HEIC validation property detection, pass orientation override across SDR/HDR and bridges; unit boundary cases RED/GREEN.
-- [ ] Profile tests green; commit and ledger.
+- [x] Baseline focused tests, design builder check completed.
+- [x] Add real HEIC fixtures with attached EXIF after encoding: all8, primary transforms/identity/crop combinations, both byte orders, malformed/duplicate/multiple EXIF; observe current refusal RED.
+- [x] Extend image_exif semantic file/span parser and HEIC validation property detection, pass orientation override across SDR/HDR and bridges; unit boundary cases RED/GREEN.
+- [x] Profile tests green; commit and ledger.
 
 ### Task2: Selected metadata mode
 
-- [ ] New mode config/snapshot/queue/panel tests RED; real JPEG/TIFF/HEIC→JPEG/TIFF whitelist and invalid/duplicate/private-field tests RED.
-- [ ] Add enum2/photo_details, bounded semantic extraction and individual WIC tag output/HEIC metadata override, third UI choice; retain legacy capture_date/default.
-- [ ] Profile tests green, including unsupported output stripping and old modes; commit and ledger.
+- [x] New mode config/snapshot/queue/panel tests RED; real JPEG/TIFF/HEIC→JPEG/TIFF whitelist and invalid/duplicate/private-field tests RED.
+- [x] Add enum2/photo_details, bounded semantic extraction and individual WIC tag output/HEIC metadata override, third UI choice; retain legacy capture_date/default.
+- [x] Profile tests green, including unsupported output stripping and old modes; commit and ledger.
 
 ### Task3: Local0.15 acceptance
 
-- [ ] Update all current version declarations incl CI/manifests, README/START and package docs; historical0.14 evidence preserved; release guard GREEN.
+- [x] Update all current version declarations incl CI/manifests, README/START and package docs; historical0.14 evidence preserved; release guard GREEN.
 - [ ] Warning-free build, full sequential CTest on D-local TEMP/TMP; one fresh read-only final review, fix confirmed Important/Critical once with RED/GREEN and full green suite.
 - [ ] Final evidence/docs commit, archive owned ledger, retain local branch. No new artifacts/installer/publish.

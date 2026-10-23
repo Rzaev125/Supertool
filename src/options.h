@@ -7,7 +7,7 @@ enum class QualityPreset { Compact, Balanced, High };
 enum class ResourceMode { Economy, Balanced, Fast };
 enum class VideoAcceleration { Auto, Cpu };
 enum class VideoCodec { Default, H264, Hevc, Av1 };
-enum class ImageMetadata { Remove, CaptureDate };
+enum class ImageMetadata { Remove, CaptureDate, PhotoDetails };
 struct ConversionOptions {
     QualityPreset quality = QualityPreset::Balanced;
     ResourceMode resources = ResourceMode::Balanced;

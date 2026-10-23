@@ -8,7 +8,7 @@ Run `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-heic.ps1`
 
 - Static, 8-bit SDR HEIC/HEIF (local0.14 also supports10/12-bit BT.2020 PQ/HLG to SDR; see [HDR images](hdr-images.md)), including alpha, and conversions to/from PNG, JPEG, BMP, TIFF, WebP and AVIF.
 - A single top-level image; attached thumbnails and the alpha auxiliary image do not count as additional frames.
-- Container rotation (`irot`), reflection (`imir`) and clean-aperture crop (`clap`) are applied by libheif before PNG output. Codec padding is cropped correctly. EXIF orientation other than 1 is refused explicitly because applying both EXIF and HEIF transforms can rotate twice.
+- Container rotation (`irot`), reflection (`imir`) and clean-aperture crop (`clap`) are applied by libheif before PNG output. Codec padding is cropped correctly. Local0.15 applies original EXIF Orientation1–8 only when the primary image has neither irot nor imir. Property presence, including identity, takes precedence; crop alone does not suppress EXIF. Invalid/duplicate EXIF orientation is refused. See [selected photo metadata](photo-metadata.md).
 - ICC profiles are retained by the decoder and required by WIC color management before normalization to sRGB. Without ICC, only sRGB/unspecified NCLX primaries and transfer are accepted. Export declares sRGB NCLX (1/13/6), 8-bit 4:4:4, and drops source metadata.
 - Compact/balanced/high presets use HEVC quality 60/80/95 and the fast encoder preset. Encoding thread pools follow the resource setting; frame parallelism and decoding tile parallelism are one. Image maximum dimension uses the shared aspect-preserving downscaler and never enlarges.
 - Unicode filenames are handled by Win32 mapping and the native MSYS2 executables.

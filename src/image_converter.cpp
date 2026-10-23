@@ -102,7 +102,7 @@ bool valid_capture_date(const char* text) {
 fs::path normalized(const fs::path& value) { return fs::absolute(value).lexically_normal(); }
 bool same_path(const fs::path& a, const fs::path& b) { return _wcsicmp(a.c_str(), b.c_str()) == 0; }
 }
-void convert_image(const fs::path& input_arg, const fs::path& output_arg, const fs::path& temporary_arg, ImageColor color, const ConversionOptions& options, unsigned orientation_override) {
+void convert_image(const fs::path& input_arg, const fs::path& output_arg, const fs::path& temporary_arg, ImageColor color, const ConversionOptions& options, unsigned orientation_override, const PhotoExif* metadata_override) {
     validate_options(options);
     const auto input = normalized(input_arg), output = normalized(output_arg), temporary = normalized(temporary_arg);
     if (same_path(input, output) || same_path(input, temporary) || same_path(output, temporary))
@@ -179,6 +179,13 @@ void convert_image(const fs::path& input_arg, const fs::path& output_arg, const 
                 if (SUCCEEDED(metadata->GetMetadataByName(query, &date)) && date.vt == VT_LPSTR && valid_capture_date(date.pszVal))
                     capture_date.assign(date.pszVal, 19);
                 PropVariantClear(&date);
+            }
+            PhotoExif photo;
+            if (options.image_metadata == ImageMetadata::PhotoDetails && (jpeg || tiff)) {
+                if (metadata_override) photo = *metadata_override;
+                else if (source_container == GUID_ContainerFormatJpeg || source_container == GUID_ContainerFormatTiff)
+                    photo = inspect_image_exif(source.value, (uint64_t(info.nFileSizeHigh) << 32) | info.nFileSizeLow);
+                capture_date = photo.capture_date;
             }
             ComPtr<IWICBitmapSource> color_source = decoded;
             if (color != ImageColor::Unmanaged) {
@@ -271,6 +278,22 @@ void convert_image(const fs::path& input_arg, const fs::path& output_arg, const 
                 require_hr(frame->GetMetadataQueryWriter(&writer), "Не удалось сохранить дату съёмки");
                 PROPVARIANT date{}; date.vt = VT_LPSTR; date.pszVal = capture_date.data();
                 require_hr(writer->SetMetadataByName(jpeg ? L"/app1/ifd/exif/{ushort=36867}" : L"/ifd/exif/{ushort=36867}", &date), "Не удалось записать дату съёмки");
+            }
+            if (!photo.artist.empty() || !photo.copyright.empty() || !photo.xp_author.empty()) {
+                ComPtr<IWICMetadataQueryWriter> writer;
+                require_hr(frame->GetMetadataQueryWriter(&writer), "Не удалось сохранить метаданные фото");
+                auto text = [&](const wchar_t* query, std::string& value) {
+                    if (value.empty()) return;
+                    PROPVARIANT property{}; property.vt = VT_LPSTR; property.pszVal = value.data();
+                    require_hr(writer->SetMetadataByName(query, &property), "Не удалось записать поле EXIF");
+                };
+                text(jpeg ? L"/app1/ifd/{ushort=315}" : L"/ifd/{ushort=315}", photo.artist);
+                text(jpeg ? L"/app1/ifd/{ushort=33432}" : L"/ifd/{ushort=33432}", photo.copyright);
+                if (!photo.xp_author.empty()) {
+                    PROPVARIANT property{}; property.vt = VT_VECTOR | VT_UI1;
+                    property.caub.cElems = static_cast<ULONG>(photo.xp_author.size()); property.caub.pElems = photo.xp_author.data();
+                    require_hr(writer->SetMetadataByName(jpeg ? L"/app1/ifd/{ushort=40093}" : L"/ifd/{ushort=40093}", &property), "Не удалось записать автора EXIF");
+                }
             }
             require_hr(frame->SetSize(width, height), "Не удалось задать размер результата");
             double dpi_x = 96, dpi_y = 96;

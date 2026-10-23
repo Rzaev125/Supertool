@@ -251,14 +251,17 @@ int main(int argc,char** argv) {
     run("capture-date combo saves, restores and rejects invalid selection", [&] {
         panel.set_settings(Settings{});
         auto combo=child(window,ImageMetadataChoice);
-        check(SendMessageW(combo,CB_GETCOUNT,0,0)==2,"metadata choices exist");
+        check(SendMessageW(combo,CB_GETCOUNT,0,0)==3,"metadata choices exist");
         check(SendMessageW(combo,CB_GETCURSEL,0,0)==0,"metadata stripped by default");
         SendMessageW(combo,CB_SETCURSEL,1,0);const auto before=saved;
         click(child(window,Apply));check(saved==before+1,"metadata choice saved");
         check(static_cast<int>(saved_settings.conversion.image_metadata)==1,"capture date lost");
         panel.set_settings(saved_settings);check(SendMessageW(combo,CB_GETCURSEL,0,0)==1,"metadata choice restored");
+        SendMessageW(combo,CB_SETCURSEL,2,0);click(child(window,Apply));
+        check(saved==before+2&&saved_settings.conversion.image_metadata==ImageMetadata::PhotoDetails,"photo details choice lost");
+        panel.set_settings(saved_settings);check(SendMessageW(combo,CB_GETCURSEL,0,0)==2,"photo details choice not restored");
         SendMessageW(combo,CB_SETCURSEL,static_cast<WPARAM>(-1),0);
-        click(child(window,Apply));check(saved==before+1,"empty metadata choice accepted");
+        click(child(window,Apply));check(saved==before+2,"empty metadata choice accepted");
         panel.set_settings(Settings{});
     });
     run("DPI resize preserves usable controls and keyboard scrolls settings", [&] {

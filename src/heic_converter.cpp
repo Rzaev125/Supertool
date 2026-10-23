@@ -5,6 +5,7 @@
 #include "engines.h"
 #include "module_paths.h"
 #include "image_hdr.h"
+#include "image_exif.h"
 #include <cstdint>
 #include <cstddef>
 #include <cstring>
@@ -47,6 +48,8 @@ struct Heif {
     Error (*read)(void*, const void*, size_t, const void*) = nullptr;
     int (*images)(void*) = nullptr, (*sequence)(const void*) = nullptr;
     Error (*primary)(void*, void**) = nullptr;
+    uint32_t (*item_id)(const void*) = nullptr;
+    int (*properties)(const void*, uint32_t, int, uint32_t*, int) = nullptr;
     int (*width)(const void*) = nullptr, (*height)(const void*) = nullptr;
     int (*ispe_width)(const void*) = nullptr, (*ispe_height)(const void*) = nullptr;
     int (*bits)(const void*) = nullptr, (*premultiplied)(const void*) = nullptr;
@@ -73,6 +76,7 @@ struct Heif {
             API(limits, "heif_context_get_security_limits"); API(read, "heif_context_read_from_memory_without_copy");
             API(images, "heif_context_get_number_of_top_level_images"); API(sequence, "heif_context_has_sequence");
             API(primary, "heif_context_get_primary_image_handle"); API(release, "heif_image_handle_release");
+            API(item_id, "heif_image_handle_get_item_id"); API(properties, "heif_item_get_properties_of_type");
             API(width, "heif_image_handle_get_width"); API(height, "heif_image_handle_get_height");
             API(ispe_width, "heif_image_handle_get_ispe_width"); API(ispe_height, "heif_image_handle_get_ispe_height");
             API(bits, "heif_image_handle_get_luma_bits_per_pixel"); API(premultiplied, "heif_image_handle_is_premultiplied_alpha");
@@ -93,31 +97,14 @@ void dimensions(int width, int height) {
     if (width <= 0 || height <= 0 || width > 32768 || height > 32768 || uint64_t(width) * height > 40000000)
         throw std::runtime_error("Лимит HEIC: 40 млн пикселей и 32768 пикселей по каждой стороне.");
 }
-void check_exif(const std::vector<unsigned char>& bytes) {
-    // HEIF Exif starts with a big-endian 32-bit TIFF-header offset, measured after that field.
+PhotoExif check_exif(const std::vector<unsigned char>& bytes, bool details) {
     if (bytes.size() < 12) throw std::runtime_error("Повреждены метаданные EXIF HEIC.");
     const uint64_t start = 4 + (uint64_t(bytes[0]) << 24 | uint64_t(bytes[1]) << 16 | uint64_t(bytes[2]) << 8 | bytes[3]);
-    if (start + 8 > bytes.size()) throw std::runtime_error("Повреждены метаданные EXIF HEIC.");
-    auto p = bytes.data() + start; const auto size = bytes.size() - start;
-    const bool little = p[0] == 'I' && p[1] == 'I';
-    if (!little && !(p[0] == 'M' && p[1] == 'M')) throw std::runtime_error("Повреждены метаданные EXIF HEIC.");
-    auto number = [&](uint64_t offset, unsigned length) {
-        if (offset > size || length > size - offset) throw std::runtime_error("Повреждены метаданные EXIF HEIC.");
-        uint32_t value = 0;
-        for (unsigned i = 0; i < length; ++i) value = value << 8 | p[offset + (little ? length - i - 1 : i)];
-        return value;
-    };
-    if (number(2, 2) != 42) throw std::runtime_error("Повреждены метаданные EXIF HEIC.");
-    auto offset = number(4, 4), count = number(offset, 2);
-    if (count > 4096 || uint64_t(offset) + 2 + uint64_t(count) * 12 + 4 > size) throw std::runtime_error("Повреждены метаданные EXIF HEIC.");
-    for (uint32_t i = 0; i < count; ++i) {
-        const uint64_t entry = uint64_t(offset) + 2 + uint64_t(i) * 12;
-        if (number(entry, 2) == 274 && (number(entry + 2, 2) != 3 || number(entry + 4, 4) != 1 || number(entry + 8, 2) != 1))
-            throw std::runtime_error("Сначала примените поворот EXIF HEIC в редакторе. Повороты контейнера HEIF поддерживаются.");
-    }
+    if (start > bytes.size() || bytes.size() - start < 8) throw std::runtime_error("Повреждены метаданные EXIF HEIC.");
+    return inspect_tiff_exif(std::span<const BYTE>(bytes).subspan(static_cast<size_t>(start)), details);
 }
-struct HeicInfo { bool profile; HdrTransfer hdr; };
-HeicInfo validate_heic(const fs::path& input) {
+struct HeicInfo { bool profile; HdrTransfer hdr; unsigned orientation; PhotoExif metadata; };
+HeicInfo validate_heic(const fs::path& input, bool details = false) {
     WinHandle file(CreateFileW(input.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
     LARGE_INTEGER size{};
     if (file.value == INVALID_HANDLE_VALUE || !GetFileSizeEx(file.value, &size) || size.QuadPart <= 0 || size.QuadPart > 1024LL * 1024 * 1024)
@@ -158,14 +145,20 @@ HeicInfo validate_heic(const fs::path& input) {
     }
     if (hdr == HdrTransfer::None && !profile_size && (!nclx || (nclx->primaries != 1 && nclx->primaries != 2) || (nclx->transfer != 13 && nclx->transfer != 2)))
         throw std::runtime_error("HEIC использует цветовое пространство без поддерживаемого ICC-профиля. Сначала преобразуйте его в sRGB.");
+    const auto id = heif.item_id(raw);
+    const int rotations = heif.properties(context.get(), id, 0x69726f74, nullptr, 0);
+    const int mirrors = heif.properties(context.get(), id, 0x696d6972, nullptr, 0);
+    if (rotations < 0 || rotations > 1 || mirrors < 0 || mirrors > 1)
+        throw std::runtime_error("Неоднозначные повороты контейнера HEIC.");
+    PhotoExif photo;
     uint32_t ids[2]{}; const int metadata_count = heif.metadata_ids(raw, "Exif", ids, 2);
     if (metadata_count > 1) throw std::runtime_error("Несколько блоков EXIF HEIC не поддерживаются.");
     if (metadata_count == 1) {
         const auto length = heif.metadata_size(raw, ids[0]);
         if (!length || length > 4 * 1024 * 1024) throw std::runtime_error("Повреждены метаданные EXIF HEIC.");
-        std::vector<unsigned char> metadata(length); checked(heif.metadata(raw, ids[0], metadata.data())); check_exif(metadata);
+        std::vector<unsigned char> metadata(length); checked(heif.metadata(raw, ids[0], metadata.data())); photo = check_exif(metadata, details);
     }
-    return {profile_size != 0, hdr};
+    return {profile_size != 0, hdr, rotations || mirrors ? 1U : photo.orientation, std::move(photo)};
 }
 }
 void convert_heic(const fs::path& input, const fs::path& output, Format format, const fs::path& work, const ConversionOptions& options) {
@@ -175,8 +168,12 @@ void convert_heic(const fs::path& input, const fs::path& output, Format format, 
     const auto source_format = parse_format(input.extension().wstring());
     fs::path pixels = input;
     auto color = ImageColor::ToSrgb;
+    unsigned orientation = 0;
+    PhotoExif photo;
     if (source_format == Format::Heic) {
-        const auto info = validate_heic(input);
+        const auto info = validate_heic(input, options.image_metadata == ImageMetadata::PhotoDetails);
+        photo = info.metadata;
+        orientation = info.orientation;
         if (info.profile) color = ImageColor::RequireProfile;
         pixels = work / L"heic-decoded.png";
         // Default libheif decoding applies irot, imir and clean-aperture crop before writing PNG.
@@ -194,7 +191,7 @@ void convert_heic(const fs::path& input, const fs::path& output, Format format, 
     }
     if (format == Format::Heic || format == Format::Avif || format == Format::Webp) {
         const auto normalized = work / L"heic-normalized.png";
-        convert_image(pixels, normalized, work / L"heic-normalize.tmp", color, options);
+        convert_image(pixels, normalized, work / L"heic-normalize.tmp", color, options, orientation, source_format == Format::Heic ? &photo : nullptr);
         if (format == Format::Avif) convert_avif(normalized, output, format, work, options);
         else if (format == Format::Webp) convert_webp(normalized, output, format, work, options);
         else {
@@ -205,6 +202,6 @@ void convert_heic(const fs::path& input, const fs::path& output, Format format, 
                 work / L"heic-encode.log", 300000);
             validate_heic(output);
         }
-    } else convert_image(pixels, output, work / L"heic-image.tmp", color, options);
+    } else convert_image(pixels, output, work / L"heic-image.tmp", color, options, orientation, source_format == Format::Heic ? &photo : nullptr);
 }
 }
