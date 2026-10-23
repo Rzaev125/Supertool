@@ -5,7 +5,7 @@
 #include <stdexcept>
 
 namespace shiftwheel {
-enum class JobState { Queued, Running, Succeeded, Failed, Cancelled };
+enum class JobState { Queued, Running, Succeeded, Failed, Cancelled, Interrupted };
 struct ConversionJob {
     uint64_t id = 0;
     std::filesystem::path input, output_directory, output;
@@ -14,6 +14,9 @@ struct ConversionJob {
     JobState state = JobState::Queued;
     std::wstring message;
     uint64_t batch_id = 0;
+    uint64_t input_size = 0;
+    int64_t input_modified = 0;
+    bool input_identity = false;
 };
 struct BatchOutcome {
     uint64_t id = 0;
@@ -21,6 +24,11 @@ struct BatchOutcome {
     std::filesystem::path last_output;
     std::wstring last_message;
 };
+struct QueueSnapshot {
+    std::vector<ConversionJob> jobs;
+    std::vector<BatchOutcome> batches, completed_batches;
+};
+bool source_unchanged(const ConversionJob& job) noexcept;
 inline bool notify_batch(NotificationMode mode, const BatchOutcome& batch) {
     return mode == NotificationMode::All || (mode == NotificationMode::Errors && batch.failed != 0);
 }
@@ -42,6 +50,7 @@ public:
         ++next_batch_;
         for (auto& job : additions) jobs_.push_back(std::move(job));
         next_id_ = id;
+        ++revision_;
     }
     ConversionJob* find(uint64_t id) {
         auto it = std::find_if(jobs_.begin(), jobs_.end(), [id](const auto& j) { return j.id == id; });
@@ -60,6 +69,7 @@ public:
         auto job = find(id);
         if (!job || job->state != JobState::Queued || active()) throw std::runtime_error("Некорректное состояние очереди.");
         job->state = JobState::Running;
+        ++revision_;
     }
     void complete(uint64_t id, JobState state, const std::filesystem::path& output, std::wstring message) {
         auto job = find(id);
@@ -67,6 +77,7 @@ public:
             throw std::runtime_error("Некорректное завершение задачи.");
         record(*job, state, output, message);
         job->state = state; job->output = output; job->message = std::move(message);
+        ++revision_;
         auto completed = jobs_.size() - pending() - (active() ? 1 : 0);
         while (completed > 100) {
             auto it = std::find_if(jobs_.begin(), jobs_.end(), [](const auto& j) { return j.state != JobState::Queued && j.state != JobState::Running; });
@@ -75,25 +86,47 @@ public:
     }
     size_t pending() const { return static_cast<size_t>(std::count_if(jobs_.begin(), jobs_.end(), [](const auto& j) { return j.state == JobState::Queued; })); }
     bool paused() const { return paused_; }
-    void set_paused(bool value) { paused_ = value; }
+    void set_paused(bool value) { if(paused_!=value){paused_=value;++revision_;} }
     bool remove(uint64_t id) {
         auto it = std::find_if(jobs_.begin(), jobs_.end(), [id](const auto& j) { return j.id == id && j.state == JobState::Queued; });
         if (it == jobs_.end()) return false;
         record(*it, JobState::Cancelled, {}, L"Задание удалено из очереди.");
-        jobs_.erase(it); return true;
+        jobs_.erase(it); ++revision_; return true;
     }
     void clear_pending() {
+        if(pending()) ++revision_;
         for(const auto& job : jobs_) if(job.state == JobState::Queued) record(job, JobState::Cancelled, {}, L"Задание удалено из очереди.");
         std::erase_if(jobs_, [](const auto& j) { return j.state == JobState::Queued; });
     }
     std::vector<BatchOutcome> take_batch_outcomes() {
         std::vector<BatchOutcome> ready;
         for(auto it=batches_.begin();it!=batches_.end();) {
-            if(!it->second.remaining) {ready.push_back(std::move(it->second));it=batches_.erase(it);} else ++it;
+            if(!it->second.remaining) {
+                completed_batches_.push_back(it->second);
+                if(completed_batches_.size()>100) completed_batches_.erase(completed_batches_.begin());
+                ready.push_back(std::move(it->second));it=batches_.erase(it);++revision_;
+            } else ++it;
         }
         return ready;
     }
     const std::vector<ConversionJob>& items() const { return jobs_; }
+    uint64_t revision() const { return revision_; }
+    void capture_inputs();
+    QueueSnapshot snapshot() const {
+        QueueSnapshot s; s.jobs=jobs_;s.completed_batches=completed_batches_;
+        for(const auto& [id,batch]:batches_) s.batches.push_back(batch);
+        return s;
+    }
+    void restore(const QueueSnapshot& snapshot);
+    void clear_history() {
+        std::erase_if(jobs_,[](const auto& j){return j.state!=JobState::Queued&&j.state!=JobState::Running;});
+        completed_batches_.clear();++revision_;
+    }
+    const BatchOutcome* batch(uint64_t id) const {
+        if(auto it=batches_.find(id);it!=batches_.end())return &it->second;
+        auto it=std::find_if(completed_batches_.begin(),completed_batches_.end(),[&](const auto& b){return b.id==id;});
+        return it==completed_batches_.end()?nullptr:&*it;
+    }
 private:
     void record(const ConversionJob& job, JobState state, const std::filesystem::path& output, const std::wstring& message) {
         auto& group=batches_.at(job.batch_id); --group.remaining;
@@ -102,9 +135,11 @@ private:
         group.last_message=message;
     }
     std::map<uint64_t,BatchOutcome> batches_;
+    std::vector<BatchOutcome> completed_batches_;
     uint64_t next_batch_=1;
     std::vector<ConversionJob> jobs_;
     uint64_t next_id_ = 1;
     bool paused_ = false;
+    uint64_t revision_ = 0;
 };
 }

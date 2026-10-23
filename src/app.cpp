@@ -9,6 +9,7 @@
 #include "worker.h"
 #include "control_panel.h"
 #include "job_queue.h"
+#include "job_store.h"
 #include "file_policy.h"
 #include <shellapi.h>
 #include <shlobj.h>
@@ -46,6 +47,14 @@ public:
         catch (const std::exception& error) { startup_notice_ = L"Настройки не загружены: " + from_utf8(error.what()); }
         diagnostic_ = std::make_unique<DiagnosticLog>(settings_path_.parent_path()/L"ShiftWheel.diagnostics.log");
         diagnostic_->append("session-start");
+        queue_path_=settings_path_.parent_path()/L"ShiftWheel.queue";
+        try {
+            if(auto saved=load_queue(queue_path_)) {
+                queue_.restore(*saved);queue_.take_batch_outcomes();
+                recovery_pending_=queue_.pending()!=0;
+                for(auto it=queue_.items().rbegin();it!=queue_.items().rend();++it)if(it->state==JobState::Succeeded&&!it->output.empty()){last_output_=it->output;break;}
+            }
+        }catch(const std::exception& e){startup_notice_=from_utf8(e.what());}
         executable_ = executable; settings_.start_with_windows = startup_enabled(executable_);
         if (update_failed_) startup_notice_ = L"Обновление не установлено. Повторите проверку через меню трея. Автоматические повторы приостановлены до следующего запуска.";
         WNDCLASSW cls{}; cls.lpfnWndProc = window_proc; cls.hInstance = instance; cls.lpszClassName = L"ShiftWheel.Controller";
@@ -59,7 +68,8 @@ public:
         PanelActions actions;
         actions.export_diagnostics = [this] { export_diagnostics(); };
         actions.cancel = [this] { cancel(); };
-        actions.pause_queue = [this] { queue_.set_paused(!queue_.paused()); refresh(); PostMessageW(window_, wm_start_next, 0, 0); };
+        actions.pause_queue = [this] { recovery_pending_=false;queue_.set_paused(!queue_.paused()); refresh(); PostMessageW(window_, wm_start_next, 0, 0); };
+        actions.clear_history = [this] {queue_.clear_history();last_output_.clear();refresh();};
         actions.clear_queue = [this] { queue_.clear_pending(); notify_finished_batches(); refresh(); PostMessageW(window_, wm_start_next, 0, 0); };
         actions.remove = [this](uint64_t id) { queue_.remove(id); notify_finished_batches(); refresh(); PostMessageW(window_, wm_start_next, 0, 0); };
         actions.open_result = [this](uint64_t id) { if (auto job = queue_.find(id); job && !job->output.empty()) reveal(job->output); };
@@ -68,6 +78,7 @@ public:
                 if (!supported_local_file(job->input)) throw std::runtime_error("Исходный файл больше недоступен.");
                 const auto snapshot = *job;
                 queue_.enqueue({snapshot.input}, snapshot.format, snapshot.options, snapshot.output_directory);
+                queue_.capture_inputs();
                 refresh(); PostMessageW(window_, wm_start_next, 1, 0);
             }
         };
@@ -97,6 +108,7 @@ public:
         if (preview) { POINT point{}; GetCursorPos(&point); wheel_->show(point, true); }
         refresh();
         if (show_panel || show_settings) panel_.show(show_settings);
+        else if(recovery_pending_)panel_.show(false,false);
         SetTimer(window_, 2, 30000, nullptr);
     }
     bool pretranslate(MSG& message) { return panel_.handle() && IsWindowVisible(panel_.handle()) && IsDialogMessageW(panel_.handle(), &message); }
@@ -108,6 +120,7 @@ private:
         case JobState::Succeeded: return L"Готово";
         case JobState::Failed: return L"Ошибка";
         case JobState::Cancelled: return L"Отменено";
+        case JobState::Interrupted: return L"Прервано — повторите вручную";
         }
         return L"";
     }
@@ -131,6 +144,7 @@ private:
         try {
             for (const auto& input : files) if (!supported_local_file(input)) throw std::runtime_error("Один из исходных файлов недоступен.");
             queue_.enqueue(files, format, settings_.conversion, settings_.output_directory);
+            queue_.capture_inputs();
             diagnostic_->append("conversion-queued",queue_.items().back().id);
             PostMessageW(window_, wm_start_next, 1, 0);
         } catch (const std::exception& error) { diagnostic_->append("admission-rejected"); if(settings_.notifications != NotificationMode::None) balloon(L"Не удалось добавить файлы", from_utf8(error.what()), NIIF_ERROR); throw; }
@@ -148,12 +162,15 @@ private:
             const auto snapshot = *job;
             queue_.start(snapshot.id); cancelling_ = false;
             try {
+                if(!persist_queue())throw std::runtime_error("Не удалось сохранить состояние. Очередь приостановлена.");
+                if(!source_unchanged(snapshot))throw std::runtime_error("Исходный файл исчез или изменился после добавления. Проверьте его и нажмите «Повторить».");
                 worker_.start(snapshot.input, snapshot.format, window_, snapshot.options, snapshot.output_directory);
                 started_ = GetTickCount64(); tooltip(L"ShiftWheel — конвертация…"); break;
             } catch (const std::exception& error) {
                 diagnostic_->append("conversion-start-failed",snapshot.id);
                 queue_.complete(snapshot.id, JobState::Failed, {}, from_utf8(error.what()));
                 notify_finished_batches();
+                if(queue_.paused())break;
             }
         }
         refresh();
@@ -166,10 +183,19 @@ private:
             balloon(group.failed ? L"Конвертация: есть ошибки" : L"Конвертация завершена", message, group.failed ? NIIF_ERROR : NIIF_INFO, group.last_output);
         }
     }
+    bool persist_queue() {
+        if(saved_revision_==queue_.revision())return true;
+        saved_revision_=queue_.revision();
+        try{save_queue(queue_path_,queue_.snapshot());return true;}
+        catch(const std::exception& e){startup_notice_=from_utf8(e.what());queue_.set_paused(true);saved_revision_=queue_.revision();return false;}
+    }
     void refresh() {
+        persist_queue();
         PanelState state; state.queue_paused = queue_.paused(); state.running = worker_.busy();
+        state.recovery_pending=recovery_pending_;
         state.headline = queue_.paused() ? L"Очередь приостановлена" : L"Готов к конвертации";
         state.detail = startup_notice_.empty() ? L"Перетащите файлы и удерживайте Shift. В очереди: " + std::to_wstring(queue_.pending()) : startup_notice_;
+        if(recovery_pending_)state.detail=L"Найдена сохранённая очередь. Нажмите «Восстановить очередь» или очистите её. Конвертация ещё не запущена.";
         if (auto active = queue_.active()) {
             const auto progress = worker_.progress();
             state.headline = cancelling_ ? L"Отменяем конвертацию…" : active->input.filename().wstring();
@@ -181,6 +207,7 @@ private:
             auto detail = job.input.wstring();
             if (!job.message.empty()) detail += L"\r\n" + job.message;
             if (!job.output.empty()) detail += L"\r\nРезультат: " + job.output.wstring();
+            if(auto batch=queue_.batch(job.batch_id))detail+=L"\r\nГруппа "+std::to_wstring(batch->id)+L": всего "+std::to_wstring(batch->total)+L", готово "+std::to_wstring(batch->succeeded)+L", ошибок "+std::to_wstring(batch->failed)+L", отменено "+std::to_wstring(batch->cancelled)+L", осталось "+std::to_wstring(batch->remaining);
             state.jobs.push_back({job.id, job.input.filename().wstring(), label(job.format), status(job.state), std::move(detail), !pending && !running, pending, job.state == JobState::Succeeded});
         };
         for (const auto& job : queue_.items()) if (job.state == JobState::Running || job.state == JobState::Queued) add(job);
@@ -387,6 +414,9 @@ private:
     Settings settings_;
     std::unique_ptr<DiagnosticLog> diagnostic_;
     JobQueue queue_;
+    std::filesystem::path queue_path_;
+    uint64_t saved_revision_=0;
+    bool recovery_pending_=false;
     std::filesystem::path settings_path_;
     std::wstring startup_notice_;
     bool cancelling_ = false;

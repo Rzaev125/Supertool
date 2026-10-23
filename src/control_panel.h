@@ -18,9 +18,10 @@ struct PanelState {
     int percent = -1;
     bool running = false, queue_paused = false;
     std::vector<PanelRow> jobs;
+    bool recovery_pending = false;
 };
 struct PanelActions {
-    std::function<void()> cancel, pause_queue, clear_queue, export_diagnostics;
+    std::function<void()> cancel, pause_queue, clear_queue, export_diagnostics, clear_history;
     std::function<void(uint64_t)> open_result, retry, remove;
     std::function<void(const Settings&)> save;
 };

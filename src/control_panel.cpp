@@ -20,7 +20,8 @@ enum Control : int {
     Output, Browse, AutoShow, CategoryChoice, Formats, MoveUp, MoveDown,
     Apply, Defaults, SettingsError, PdfOcr, OcrEnglish, OcrRussian, OcrAzerbaijani, Acceleration, Startup, AutoUpdate, UpdateChannel, UpdateLabel, Notifications, NotificationsLabel, SettingsSection, ExportDiagnostics,
     QualityLabel = 300, ResourcesLabel, ImageLabel, VideoLabel, AudioLabel,
-    PdfLabel, OutputLabel, OutputHint, WheelLabel, WheelHint, CategoryLabel, AccelerationLabel
+    PdfLabel, OutputLabel, OutputHint, WheelLabel, WheelHint, CategoryLabel, AccelerationLabel,
+    HistorySearch = 120, HistoryLabel, ClearHistory
 };
 struct CategoryEntry { Category category; const wchar_t* name; const wchar_t* sample; };
 constexpr std::array categories{
@@ -100,6 +101,7 @@ struct ControlPanel::Impl {
     bool settings_visible = false, rebuilding = false;
     Settings draft;
     PanelState state;
+    PanelState unfiltered;
     PanelActions actions;
     std::vector<HWND> task_controls, settings_controls;
     std::vector<Format> format_order;
@@ -172,6 +174,9 @@ struct ControlPanel::Impl {
         task(Open, L"BUTTON", L"Показать результат", WS_TABSTOP);
         task(Retry, L"BUTTON", L"Повторить", WS_TABSTOP);
         task(Remove, L"BUTTON", L"Убрать из очереди", WS_TABSTOP);
+        task(HistoryLabel,L"STATIC",L"Поиск истории",SS_LEFT);
+        task(HistorySearch,L"EDIT",L"",WS_TABSTOP|ES_AUTOHSCROLL,WS_EX_CLIENTEDGE);
+        task(ClearHistory,L"BUTTON",L"Очистить историю",WS_TABSTOP);
 
         settings_controls.push_back(add(window, SettingsSection, L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST));
         for(auto section : {L"Основные",L"Конвертация",L"Колесо",L"Обновления"}) SendMessageW(main_control(SettingsSection),CB_ADDSTRING,0,reinterpret_cast<LPARAM>(section));
@@ -284,13 +289,16 @@ struct ControlPanel::Impl {
         move(main_control(Cancel), 20, 176, 160, 32);
         move(main_control(Pause), 192, 176, 218, 32);
         move(main_control(Clear), 422, 176, 180, 32);
-        const int list_height = std::max(70, height - 404);
-        move(main_control(Jobs), 20, 224, width - 40, list_height);
+        move(main_control(HistoryLabel),20,226,106,24);
+        move(main_control(HistorySearch),132,220,width-360,30);
+        move(main_control(ClearHistory),width-210,220,190,30);
+        const int list_height = std::max(70, height - 442);
+        move(main_control(Jobs), 20, 262, width - 40, list_height);
         const int name_width = (width - 62) * 46 / 100;
         ListView_SetColumnWidth(main_control(Jobs), 0, px(name_width));
         ListView_SetColumnWidth(main_control(Jobs), 1, px(86));
         ListView_SetColumnWidth(main_control(Jobs), 2, px(width - 62 - name_width - 86));
-        move(main_control(JobDetail), 20, 238 + list_height, width - 40, 88);
+        move(main_control(JobDetail), 20, 276 + list_height, width - 40, 88);
         move(main_control(Open), 20, height - 50, 188, 32);
         move(main_control(Retry), 220, height - 50, 132, 32);
         move(main_control(Remove), 364, height - 50, 188, 32);
@@ -327,13 +335,16 @@ struct ControlPanel::Impl {
         set_text(main_control(JobDetail), row ? row->detail : L"Здесь появятся задачи и результаты текущего сеанса.");
     }
     void update_state(const PanelState& next) {
+        unfiltered=next;
         if (!window || !main_control(Jobs)) { state = next; return; }
         const auto* selected = selected_row();
         const uint64_t selected_id = selected ? selected->id : 0;
         const bool had_selection = selected != nullptr;
-        const bool same_rows = state.jobs.size() == next.jobs.size() &&
-            std::equal(state.jobs.begin(), state.jobs.end(), next.jobs.begin(), [](const auto& a, const auto& b) { return a.id == b.id; });
         auto next_copy = next;
+        auto lower=[](std::wstring value){if(!value.empty())CharLowerBuffW(value.data(),static_cast<DWORD>(value.size()));return value;};
+        auto query=lower(text_of(main_control(HistorySearch)));
+        if(!query.empty())std::erase_if(next_copy.jobs,[&](const auto& row){return row.retryable&&lower(row.name+L" "+row.target+L" "+row.status+L" "+row.detail).find(query)==std::wstring::npos;});
+        const bool same_rows=state.jobs.size()==next_copy.jobs.size()&&std::equal(state.jobs.begin(),state.jobs.end(),next_copy.jobs.begin(),[](const auto& a,const auto& b){return a.id==b.id;});
         const auto previous = std::move(state);
         state = std::move(next_copy);
         set_text(main_control(Headline), state.headline.empty() ? L"Готово к работе" : state.headline);
@@ -345,7 +356,8 @@ struct ControlPanel::Impl {
         const bool has_pending = std::any_of(state.jobs.begin(), state.jobs.end(), [](const auto& row) { return row.removable; });
         EnableWindow(main_control(Clear), has_pending && static_cast<bool>(actions.clear_queue));
         EnableWindow(main_control(Pause), (state.running || has_pending || state.queue_paused) && static_cast<bool>(actions.pause_queue));
-        set_text(main_control(Pause), state.queue_paused ? L"Продолжить очередь" : L"Приостановить очередь");
+        set_text(main_control(Pause),state.recovery_pending?L"Восстановить очередь":state.queue_paused?L"Продолжить очередь":L"Приостановить очередь");
+        EnableWindow(main_control(ClearHistory),static_cast<bool>(actions.clear_history)&&std::any_of(unfiltered.jobs.begin(),unfiltered.jobs.end(),[](const auto& r){return r.retryable;}));
         HWND jobs = main_control(Jobs);
         rebuilding = true;
         if (!same_rows) { SendMessageW(jobs, WM_SETREDRAW, FALSE, 0); ListView_DeleteAllItems(jobs); }
@@ -537,6 +549,7 @@ struct ControlPanel::Impl {
             try {actions.export_diagnostics();}catch(const std::exception& e){settings_error((L"Не удалось сохранить диагностику. "+exception_reason(e)).c_str());}
             return;
         }
+        if(id==HistorySearch&&notification==EN_CHANGE){update_state(unfiltered);return;}
         if (notification == EN_CHANGE || notification == CBN_SELCHANGE) { settings_error(L""); return; }
         if (notification != BN_CLICKED) return;
         if (id == Browse) { browse(); return; }
@@ -551,6 +564,7 @@ struct ControlPanel::Impl {
             if (id == Cancel && actions.cancel) actions.cancel();
             if (id == Pause && actions.pause_queue) actions.pause_queue();
             if (id == Clear && actions.clear_queue) actions.clear_queue();
+            if (id == ClearHistory && actions.clear_history) actions.clear_history();
             if (id == Open && row && row->openable && actions.open_result) actions.open_result(row_id);
             if (id == Retry && row && row->retryable && actions.retry) actions.retry(row_id);
             if (id == Remove && row && row->removable && actions.remove) actions.remove(row_id);

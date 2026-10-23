@@ -38,7 +38,7 @@ int main(int argc,char** argv) {
     if (FAILED(OleInitialize(nullptr))) return 1;
     ControlPanel panel;
     int failed = 0, cancelled = 0, paused = 0, cleared = 0, saved = 0;
-    int exported = 0;
+    int exported = 0, history_cleared = 0;
     uint64_t opened = 0, retried = 0, removed = 0;
     bool reject_save = false;
     std::string save_error = "Выберите существующую папку результата.";
@@ -46,6 +46,7 @@ int main(int argc,char** argv) {
     Settings saved_settings;
     PanelActions actions;
     actions.export_diagnostics = [&] { ++exported; };
+    actions.clear_history = [&] {++history_cleared;};
     actions.cancel = [&] { ++cancelled; };
     actions.pause_queue = [&] { ++paused; };
     actions.clear_queue = [&] { ++cleared; };
@@ -124,6 +125,14 @@ int main(int argc,char** argv) {
         check(IsWindow(window) && panel.handle() == window, "close retains panel");
         check((GetWindowLongPtrW(window, GWL_STYLE) & WS_VISIBLE) == 0, "close removes visibility");
         check(cancelled == 1, "close never cancels work");
+    });
+    run("history search and clear never hide active queue", [&] {
+        panel.update(state);auto before=ListView_GetItemCount(child(window,Jobs));
+        SetWindowTextW(child(window,120),L"definitely absent");
+        check(ListView_GetItemCount(child(window,Jobs))<before,"history search not applied");
+        check(ListView_GetItemCount(child(window,Jobs))>=1,"pending task hidden");
+        click(child(window,122));check(history_cleared==1,"clear history callback");
+        SetWindowTextW(child(window,120),L"");check(ListView_GetItemCount(child(window,Jobs))==before,"filter changed history");
     });
     run("settings draft survives progress and invalid numeric values", [&] {
         panel.show(true, false);
