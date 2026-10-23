@@ -1,4 +1,5 @@
 #include "engines.h"
+#include "module_paths.h"
 #include "file_policy.h"
 #include "progress.h"
 #include <cmath>
@@ -17,28 +18,20 @@ std::string utf8(std::wstring_view value) {
     WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()), result.data(), count, nullptr, nullptr);
     return result;
 }
-static fs::path module_root() {
-    std::wstring executable(32768, L'\0');
-    auto n = GetModuleFileNameW(nullptr, executable.data(), static_cast<DWORD>(executable.size()));
-    if (!n || n >= executable.size()) throw std::runtime_error("Не удалось найти папку приложения.");
-    executable.resize(n);
-    return fs::path(executable).parent_path() / L"modules";
-}
 fs::path module_path(Category category) {
-    auto root = module_root();
     switch (category) {
-    case Category::Video: case Category::Audio: return root / L"ffmpeg" / L"ffmpeg.exe";
-    case Category::Document: case Category::Spreadsheet: case Category::Presentation: return root / L"libreoffice" / L"program" / L"soffice.com";
-    case Category::Pdf: return root / L"pdfium" / L"pdfium.dll";
+    case Category::Video: case Category::Audio: return module_directory("ffmpeg") / L"ffmpeg.exe";
+    case Category::Document: case Category::Spreadsheet: case Category::Presentation: return module_directory("libreoffice") / L"program" / L"soffice.com";
+    case Category::Pdf: return module_directory("pdfium") / L"pdfium.dll";
     default: return {};
     }
 }
 void require_engine(Category category) {
     auto path = module_path(category);
     if (!path.empty() && !fs::is_regular_file(path))
-        throw std::runtime_error("Модуль конвертации отсутствует. Распакуйте полную сборку с папкой modules рядом с ShiftWheel.exe.");
+        throw std::runtime_error("Модуль конвертации отсутствует. Откройте Настройки → Модули и установите нужный компонент.");
 }
-fs::path avif_module(bool encode) { return module_root() / L"avif" / (encode ? L"avifenc.exe" : L"avifdec.exe"); }
+fs::path avif_module(bool encode) { return module_directory("avif") / (encode ? L"avifenc.exe" : L"avifdec.exe"); }
 void require_conversion_engines(const fs::path& input, Format format) {
     require_engine(category(input));
     if (category(input) == Category::Presentation && (format == Format::Png || format == Format::Jpeg)) require_engine(Category::Pdf);
@@ -47,14 +40,14 @@ void require_conversion_engines(const fs::path& input, Format format) {
     for (bool encode : {false, true}) {
         const bool needed = encode ? format == Format::Avif : parse_format(input.extension().wstring()) == Format::Avif;
         if (needed && !fs::is_regular_file(avif_module(encode)))
-            throw std::runtime_error("Модуль AVIF отсутствует. Распакуйте полную сборку с папкой modules/avif рядом с ShiftWheel.exe.");
+            throw std::runtime_error("Модуль AVIF отсутствует. Откройте Настройки → Модули → AVIF.");
     }
     if (format == Format::Heic || parse_format(input.extension().wstring()) == Format::Heic) {
-        const auto root = module_root() / L"heic";
+        const auto root = module_directory("heic");
         if (!fs::is_regular_file(root / L"libheif.dll") ||
             (format == Format::Heic && !fs::is_regular_file(root / L"heif-enc.exe")) ||
             (parse_format(input.extension().wstring()) == Format::Heic && !fs::is_regular_file(root / L"heif-dec.exe")))
-            throw std::runtime_error("Модуль HEIC отсутствует. Распакуйте полную сборку с папкой modules/heic рядом с ShiftWheel.exe.");
+            throw std::runtime_error("Модуль HEIC отсутствует. Откройте Настройки → Модули → HEIC.");
     }
 }
 void stop_job(HANDLE job) noexcept {

@@ -1,5 +1,6 @@
 #include "ocr.h"
 #include "engines.h"
+#include "module_paths.h"
 #include <algorithm>
 #include <fstream>
 #include <set>
@@ -30,13 +31,13 @@ bool plain_file(const fs::path& file) {
     return attributes != INVALID_FILE_ATTRIBUTES && !(attributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT));
 }
 }
-fs::path ocr_module() { return module_path(Category::Pdf).parent_path().parent_path() / L"ocr" / L"tesseract.exe"; }
+fs::path ocr_module() { return module_directory("ocr") / L"tesseract.exe"; }
 void require_ocr(const std::string& languages) {
     auto names = language_names(languages);
     // The official Latin Azerbaijani model also requests its Cyrillic companion.
     if (std::find(names.begin(), names.end(), "aze") != names.end()) names.emplace_back("aze_cyrl");
     const auto executable = ocr_module();
-    if (!plain_file(executable)) throw std::runtime_error("Для сканированных страниц нужен модуль OCR. Верните папку modules/ocr рядом с ShiftWheel.exe.");
+    if (!plain_file(executable)) throw std::runtime_error("Для сканированных страниц нужен модуль OCR. Откройте Настройки → Модули → OCR.");
     for (const auto& language : names) {
         const auto model = executable.parent_path() / L"tessdata" / (language + ".traineddata");
         if (!plain_file(model)) throw std::runtime_error("В модуле OCR отсутствует языковая модель " + language + ". Верните папку modules/ocr/tessdata.");

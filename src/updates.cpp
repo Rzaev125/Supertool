@@ -48,6 +48,7 @@ bool https_url(const std::wstring& url){
  URL_COMPONENTS u{sizeof(u)};u.dwHostNameLength=u.dwUserNameLength=u.dwPasswordLength=static_cast<DWORD>(-1);
  return WinHttpCrackUrl(url.c_str(),0,0,&u)&&u.nScheme==INTERNET_SCHEME_HTTPS&&u.dwHostNameLength>0&&!u.dwUserNameLength&&!u.dwPasswordLength;
 }
+void download_asset(const std::wstring& url,unsigned long long bytes,std::ostream& output,std::stop_token stop,const UpdateProgress& progress){get(url,bytes,output,stop,progress);}
 bool newer_version(const std::wstring& a,const std::wstring& b){return version(a)>version(b);}
 UpdateRelease parse_update_manifest(const std::string& text){
  if(text.empty()||text.size()>16384||text.find('\0')!=std::string::npos)fail();std::map<std::string,std::string> fields;std::istringstream in(text);std::string line;

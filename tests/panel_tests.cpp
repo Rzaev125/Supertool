@@ -39,12 +39,15 @@ int main(int argc,char** argv) {
     ControlPanel panel;
     int failed = 0, cancelled = 0, paused = 0, cleared = 0, saved = 0;
     int exported = 0, history_cleared = 0, update_checked=0,update_installed=0,update_later=0;
+    int module_installed=0,module_removed=0,module_cancelled=0,module_refreshed=0,module_selected=0;
     uint64_t opened = 0, retried = 0, removed = 0;
     bool reject_save = false;
     std::string save_error = "Выберите существующую папку результата.";
     std::string open_error;
     Settings saved_settings;
     PanelActions actions;
+    actions.change_module=[&](size_t index,bool remove){check(index==0,"selected module ID");if(remove)++module_removed;else ++module_installed;};
+    actions.cancel_module=[&]{++module_cancelled;};actions.refresh_modules=[&]{++module_refreshed;};actions.select_module=[&](size_t index){check(index==0,"module selection ID");++module_selected;};
     actions.export_diagnostics = [&] { ++exported; };
     actions.clear_history = [&] {++history_cleared;};
     actions.check_update=[&]{++update_checked;};actions.install_update=[&]{++update_installed;};actions.later_update=[&]{++update_later;};
@@ -271,7 +274,7 @@ int main(int argc,char** argv) {
     run("settings have four sections and persistent notification choices", [&] {
         panel.set_settings(Settings{});panel.show(true,false);
         HWND sections=child(window,227),notifications=child(window,225);
-        check(SendMessageW(sections,CB_GETCOUNT,0,0)==4,"four settings sections");
+        check(SendMessageW(sections,CB_GETCOUNT,0,0)==5,"five settings sections");
         check(SendMessageW(notifications,CB_GETCOUNT,0,0)==3,"three notification modes");
         click(child(window,228));check(exported==1,"explicit diagnostic export callback");
         SendMessageW(notifications,CB_SETCURSEL,1,0);
@@ -279,6 +282,19 @@ int main(int argc,char** argv) {
         SendMessageW(window,WM_COMMAND,MAKEWPARAM(227,CBN_SELCHANGE),reinterpret_cast<LPARAM>(sections));
         check((GetWindowLongPtrW(child(window,AutoUpdate),GWL_STYLE)&WS_VISIBLE)!=0 && (GetWindowLongPtrW(notifications,GWL_STYLE)&WS_VISIBLE)==0,"only update section visible");
         click(child(window,Apply));check(saved_settings.notifications==NotificationMode::Errors,"hidden draft preserved");
+    });
+    run("module actions and busy state", [&] {
+        PanelState state;state.modules={L"AVIF — не установлен"};state.module_detail=L"Загрузка 11 МБ; зависимости: нет";
+        panel.update(state);HWND sections=child(window,227);SendMessageW(sections,CB_SETCURSEL,4,0);
+        SendMessageW(window,WM_COMMAND,MAKEWPARAM(227,CBN_SELCHANGE),reinterpret_cast<LPARAM>(sections));
+        check((GetWindowLongPtrW(child(window,140),GWL_STYLE)&WS_VISIBLE)!=0,"module section visible");
+        check(control_text(child(window,141))==state.module_detail,"module sizes and dependencies visible");
+        click(child(window,142));click(child(window,143));click(child(window,145));
+        SendMessageW(window,WM_COMMAND,MAKEWPARAM(140,CBN_SELCHANGE),reinterpret_cast<LPARAM>(child(window,140)));
+        check(module_installed==1&&module_removed==1&&module_refreshed==1&&module_selected==1,"module callbacks dispatched");
+        state.modules_busy=true;panel.update(state);check(!IsWindowEnabled(child(window,142))&&!IsWindowEnabled(child(window,143)),"busy blocks mutation");
+        click(child(window,142));click(child(window,144));check(module_installed==1&&module_cancelled==1,"busy only permits cancellation");
+        state.modules_busy=false;state.modules_allowed=false;panel.update(state);check(!IsWindowEnabled(child(window,142))&&!IsWindowEnabled(child(window,143)),"queue blocks module mutation");
     });
     panel.shutdown();
     check(!panel.handle() && !IsWindow(window), "shutdown destroys native window");

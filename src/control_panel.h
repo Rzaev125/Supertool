@@ -21,12 +21,18 @@ struct PanelState {
     bool recovery_pending = false;
     std::wstring update_detail;
     bool update_checking=false,update_ready=false,update_available=false;
+    std::vector<std::wstring> modules;
+    std::wstring module_detail;
+    bool modules_busy=false,modules_allowed=true;
 };
 struct PanelActions {
     std::function<void()> cancel, pause_queue, clear_queue, export_diagnostics, clear_history;
     std::function<void(uint64_t)> open_result, retry, remove;
     std::function<void(const Settings&)> save;
     std::function<void()> check_update,install_update,later_update;
+    std::function<void(size_t,bool)> change_module;
+    std::function<void()> cancel_module,refresh_modules;
+    std::function<void(size_t)> select_module;
 };
 class ControlPanel {
 public:

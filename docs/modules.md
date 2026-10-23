@@ -1,3 +1,5 @@
+В 0.9 доступна базовая сборка и установка отдельных компонентов: [инструкция](modules-0.9.md).
+
 # Conversion modules
 
 Version 0.4.0 adds portable HEIC read/write and local PDF OCR; presentation

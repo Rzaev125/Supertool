@@ -1,3 +1,4 @@
+#include "module_paths.h"
 #include "converter.h"
 #include "diagnostics.h"
 #include "media_converter.h"
@@ -75,6 +76,7 @@ void office(const fs::path& input, const fs::path& output, Format format, const 
 }
 }
 void convert_file(const fs::path& input_path, const fs::path& output_path, const fs::path& temp_path, Format format, const ConversionOptions& options) {
+    ModuleLease module_lease(application_directory(),false);
     validate_options(options);
     auto input = fs::absolute(input_path).lexically_normal(), output = fs::absolute(output_path).lexically_normal(), work = fs::absolute(temp_path).lexically_normal();
     if (!supports_conversion(input, format)) throw std::runtime_error("Это преобразование не поддерживается.");

@@ -2,7 +2,8 @@ param(
     [Parameter(Mandatory=$true)][string]$PayloadDirectory,
     [Parameter(Mandatory=$true)][string]$StageDirectory,
     [Parameter(Mandatory=$true)][ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version,
-    [switch]$AllowTestPayload
+    [switch]$AllowTestPayload,
+    [ValidateSet('full','core')][string]$Distribution='full'
 )
 $ErrorActionPreference = 'Stop'
 # Native launchers can preserve PowerShell 7 module paths in a Windows PowerShell
@@ -26,14 +27,21 @@ foreach ($path in @($source,$stage)) {
 if ($stage.StartsWith($source + '\', [StringComparison]::OrdinalIgnoreCase) -or $stage -eq $source) { throw 'Staging must not be inside the payload.' }
 if (Test-Path -LiteralPath $stage) { throw 'Use a new staging directory; existing releases are never overwritten.' }
 if (-not (Test-Path -LiteralPath (Join-Path $source 'ShiftWheel.exe'))) { throw 'Missing ShiftWheel.exe.' }
-if (-not (Test-Path -LiteralPath (Join-Path $source 'modules') -PathType Container)) { throw 'Missing portable modules.' }
+
 if (-not $AllowTestPayload) {
     $releasePath = Join-Path $source 'release.json'
     if (-not (Test-Path -LiteralPath $releasePath)) { throw 'Missing release.json; run scripts/package.ps1 first.' }
     $release = Get-Content -LiteralPath $releasePath -Raw | ConvertFrom-Json
     if ($release.version -ne $Version) { throw 'Payload release version does not match installer version.' }
     if ($release.executable_sha256 -ne (Get-FileHash -LiteralPath (Join-Path $source 'ShiftWheel.exe') -Algorithm SHA256).Hash) { throw 'Payload executable hash does not match release.json.' }
+    if ($release.distribution -notin @('full','core') -or $release.distribution -cne $Distribution) { throw 'Payload distribution is missing, invalid or does not match requested distribution.' }
     if ((Get-Item -LiteralPath (Join-Path $source 'ShiftWheel.exe')).VersionInfo.ProductVersion -ne $Version) { throw 'Payload executable product version does not match installer version.' }
+}
+$isCore = -not $AllowTestPayload -and $release.distribution -eq 'core'
+if (-not $isCore -and -not (Test-Path -LiteralPath (Join-Path $source 'modules') -PathType Container)) { throw 'Missing portable modules.' }
+if ($isCore -and (Test-Path -LiteralPath (Join-Path $source 'modules'))) { throw 'Core payload must not contain modules.' }
+if (-not $AllowTestPayload -and -not $isCore) {
+    & (Join-Path $root 'scripts\stage-modules.ps1') -ModuleRoot (Join-Path $source 'modules') -InventoryDirectory (Join-Path $root 'build\module-packages') -CatalogPath (Join-Path $root 'resources\module_catalog.json') -Destination (Join-Path $stage 'modules') -PackagedSource -ValidateOnly
 }
 $topFiles = @('ShiftWheel.exe','release.json','README.md','START.txt','VERIFICATION.md','modules.md','heic-module.md','presentation-module.md','ocr-module.md','installer.md','hardware-video.md','updates.md','wheel-mp4.png','wheel-xlsx.png','wheel-pdf.png','wheel-avif.png','wheel-webp.png','wheel-wav.png','wheel-heic.png','wheel-pptx.png')
 $files = @(Get-ChildItem -LiteralPath $source -Recurse -File | Where-Object {

@@ -1,11 +1,13 @@
 param(
-    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.8.0',
-    [string]$PayloadDirectory = (Join-Path $PSScriptRoot '..\out\ShiftWheel'),
-    [string]$TestRoot = ''
+    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.9.0',
+    [string]$PayloadDirectory = '',
+    [string]$TestRoot = '',
+    [ValidateSet('full','core')][string]$Distribution='full'
 )
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1') -Force
 $root = [IO.Path]::GetFullPath((Split-Path $PSScriptRoot -Parent))
+if (-not $PayloadDirectory) { $PayloadDirectory = Join-Path $root ('out\ShiftWheel-'+$Version+'-'+$Distribution) }
 $run = Join-Path $root ('build\installer-build-' + [Guid]::NewGuid().ToString('N'))
 $stage = Join-Path $run 'payload'
 $output = Join-Path $run 'output'
@@ -16,9 +18,10 @@ if ($isolated) {
     $allowed = Join-Path $root 'build\installer-tests'
     if (-not $TestRoot.StartsWith($allowed + '\', [StringComparison]::OrdinalIgnoreCase) -or $TestRoot.Contains('"')) { throw 'TestRoot must be a dedicated directory inside build\installer-tests.' }
 }
-& (Join-Path $root 'installer\stage-payload.ps1') -PayloadDirectory $PayloadDirectory -StageDirectory $stage -Version $Version -AllowTestPayload:$isolated
+$fixturePayload = $isolated -and $Distribution -eq 'full' -and -not (Test-Path -LiteralPath (Join-Path $PayloadDirectory 'release.json'))
+& (Join-Path $root 'installer\stage-payload.ps1') -PayloadDirectory $PayloadDirectory -StageDirectory $stage -Version $Version -AllowTestPayload:$fixturePayload -Distribution $Distribution
 $compiler = & (Join-Path $PSScriptRoot 'fetch-installer-tools.ps1')
-$name = 'ShiftWheel-' + $Version + '-win-x64-setup'
+$name = 'ShiftWheel-' + $Version + $(if($Distribution -eq 'core'){'-core'}else{''}) + '-win-x64-setup'
 if ($isolated) { $name += '-ISOLATED-TEST' }
 $arguments = @('/Qp',('/DAppVersion=' + $Version),('/DPayloadDir=' + $stage),('/DOutputDir=' + $output),('/DOutputName=' + $name))
 if ($isolated) { $arguments += '/DIsolatedRoot=' + $TestRoot }

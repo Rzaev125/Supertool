@@ -5,7 +5,7 @@ on:
       version:
         description: Version already committed in CMake and resources
         required: true
-        default: '0.8.0'
+        default: '0.9.0'
       publish:
         description: Publish verified packages and then update channels
         type: boolean
@@ -45,6 +45,8 @@ jobs:
           if ($LASTEXITCODE) { throw 'Test dependencies failed.' }
           python scripts/ci-bootstrap.py
           if ($LASTEXITCODE) { throw 'Verified engine bootstrap failed.' }
+          python scripts/build-modules.py --version $env:RELEASE_VERSION --verify-only
+          if ($LASTEXITCODE) { throw 'Committed module package verification failed.' }
       - name: Configure, build and test
         run: |
           cmake -S . -B build -G 'Visual Studio 17 2022' -A x64 "-DSHIFTWHEEL_UPDATE_PUBLIC_KEY=$env:UPDATE_PUBLIC_KEY_HEX" "-DSHIFTWHEEL_UPDATE_KEY_ID=$env:UPDATE_KEY_ID" "-DSHIFTWHEEL_TEST_PYTHON=$((Get-Command python).Source)"
@@ -73,9 +75,12 @@ jobs:
             & build/Release/ShiftWheel.exe --render-preview "build/wheel-$kind.png" "sample.$kind"
             if($LASTEXITCODE){throw 'Preview failed.'}
           }
-          ./scripts/package.ps1
+          ./scripts/package.ps1 -Distribution full
+          ./scripts/package.ps1 -Distribution core
           ./scripts/build-installer.ps1 -Version $env:RELEASE_VERSION
+          ./scripts/build-installer.ps1 -Version $env:RELEASE_VERSION -Distribution core -PayloadDirectory "out/ShiftWheel-$env:RELEASE_VERSION-core"
           ./scripts/sign-windows.ps1 -Path "out/ShiftWheel-$env:RELEASE_VERSION-win-x64-setup.exe" -CertificateThumbprint $env:RELEASE_CERT_THUMBPRINT
+          ./scripts/sign-windows.ps1 -Path "out/ShiftWheel-$env:RELEASE_VERSION-core-win-x64-setup.exe" -CertificateThumbprint $env:RELEASE_CERT_THUMBPRINT
           git archive --format=zip --prefix="ShiftWheel-$env:RELEASE_VERSION-source/" -o "out/ShiftWheel-$env:RELEASE_VERSION-source.zip" HEAD
           if($LASTEXITCODE){throw 'Source archive failed.'}
       - name: Sign manifest and verify with native parser
@@ -111,6 +116,8 @@ jobs:
             out/ShiftWheel-${{ inputs.version }}-win-x64.zip.sha256
             out/ShiftWheel-${{ inputs.version }}-source.zip
             out/ShiftWheel-${{ inputs.version }}-source.zip.sha256
+            out/ShiftWheel-${{ inputs.version }}-core-win-x64*
+            out/module-assets/*
             out/stable.txt
             out/stable-signed.txt
       - name: Publish packages then channels

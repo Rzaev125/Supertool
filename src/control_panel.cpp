@@ -22,7 +22,8 @@ enum Control : int {
     QualityLabel = 300, ResourcesLabel, ImageLabel, VideoLabel, AudioLabel,
     PdfLabel, OutputLabel, OutputHint, WheelLabel, WheelHint, CategoryLabel, AccelerationLabel,
     HistorySearch = 120, HistoryLabel, ClearHistory,
-    UpdateInfo = 130, CheckUpdate, InstallUpdate, LaterUpdate
+    UpdateInfo = 130, CheckUpdate, InstallUpdate, LaterUpdate,
+    Modules=140,ModuleInfo,InstallModule,RemoveModule,CancelModule,RefreshModules
 };
 struct CategoryEntry { Category category; const wchar_t* name; const wchar_t* sample; };
 constexpr std::array categories{
@@ -180,7 +181,7 @@ struct ControlPanel::Impl {
         task(ClearHistory,L"BUTTON",L"Очистить историю",WS_TABSTOP);
 
         settings_controls.push_back(add(window, SettingsSection, L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST));
-        for(auto section : {L"Основные",L"Конвертация",L"Колесо",L"Обновления"}) SendMessageW(main_control(SettingsSection),CB_ADDSTRING,0,reinterpret_cast<LPARAM>(section));
+        for(auto section : {L"Основные",L"Конвертация",L"Колесо",L"Обновления",L"Модули"}) SendMessageW(main_control(SettingsSection),CB_ADDSTRING,0,reinterpret_cast<LPARAM>(section));
         SendMessageW(main_control(SettingsSection),CB_SETCURSEL,0,0);
         page = CreateWindowExW(WS_EX_CONTROLPARENT, page_class, L"", WS_CHILD | WS_VSCROLL | WS_CLIPCHILDREN,
             0, 0, 0, 0, window, nullptr, instance, this);
@@ -223,6 +224,12 @@ struct ControlPanel::Impl {
         add(page,CheckUpdate,L"BUTTON",L"Проверить",WS_TABSTOP);
         add(page,InstallUpdate,L"BUTTON",L"Установить сейчас",WS_TABSTOP);
         add(page,LaterUpdate,L"BUTTON",L"Позже — на сутки",WS_TABSTOP);
+        combo(Modules);
+        add(page,ModuleInfo,L"EDIT",L"",WS_TABSTOP|ES_READONLY|ES_MULTILINE|ES_AUTOVSCROLL|WS_VSCROLL,WS_EX_CLIENTEDGE);
+        add(page,InstallModule,L"BUTTON",L"Установить / обновить",WS_TABSTOP);
+        add(page,RemoveModule,L"BUTTON",L"Удалить",WS_TABSTOP);
+        add(page,CancelModule,L"BUTTON",L"Отменить загрузку",WS_TABSTOP);
+        add(page,RefreshModules,L"BUTTON",L"Обновить список",WS_TABSTOP);
         label_control(WheelLabel, L"Форматы в круговом меню");
         label_control(WheelHint, L"Отметьте нужные форматы и расположите их по порядку. В каждой категории нужен хотя бы один.");
         label_control(CategoryLabel, L"Категория"); combo(CategoryChoice);
@@ -253,7 +260,8 @@ struct ControlPanel::Impl {
             {AutoShow,Startup,NotificationsLabel,Notifications,OutputLabel,Output,Browse,OutputHint,ExportDiagnostics},
             {QualityLabel,Quality,ResourcesLabel,Resources,ImageLabel,ImageSize,VideoLabel,VideoSize,AudioLabel,AudioBitrate,PdfLabel,PdfDpi,AccelerationLabel,Acceleration,PdfOcr,OcrEnglish,OcrRussian,OcrAzerbaijani},
             {WheelLabel,WheelHint,CategoryLabel,CategoryChoice,Formats,MoveUp,MoveDown},
-            {AutoUpdate,UpdateLabel,UpdateChannel,UpdateInfo,CheckUpdate,InstallUpdate,LaterUpdate}};
+            {AutoUpdate,UpdateLabel,UpdateChannel,UpdateInfo,CheckUpdate,InstallUpdate,LaterUpdate},
+            {Modules,ModuleInfo,InstallModule,RemoveModule,CancelModule,RefreshModules}};
         for(size_t i=0;i<groups.size();++i) for(auto id:groups[i]) ShowWindow(setting(id),i==static_cast<size_t>(settings_section)?SW_SHOW:SW_HIDE);
         RECT rect{}; GetClientRect(page,&rect);
         const int width=MulDiv(rect.right,96,static_cast<int>(dpi)), half=(width-60)/2,right=40+half;
@@ -277,10 +285,14 @@ struct ControlPanel::Impl {
             move_setting(CategoryLabel,20,92,178,22);move_setting(CategoryChoice,20,118,178,220);
             move_setting(Formats,218,92,width-372,158);move_setting(MoveUp,width-134,92,114,30);move_setting(MoveDown,width-134,130,114,30);
             ListView_SetColumnWidth(setting(Formats),0,px(width-394));
-        } else {
+        } else if(settings_section==3) {
             move_setting(AutoUpdate,20,10,width-40,28);move_setting(UpdateLabel,20,60,width-40,23);move_setting(UpdateChannel,20,90,width-40,29);
             move_setting(UpdateInfo,20,136,width-40,100);
             move_setting(CheckUpdate,20,250,130,32);move_setting(InstallUpdate,162,250,180,32);move_setting(LaterUpdate,354,250,180,32);
+        } else {
+            move_setting(Modules,20,10,width-40,220);move_setting(ModuleInfo,20,56,width-40,170);
+            move_setting(InstallModule,20,242,210,32);move_setting(RemoveModule,242,242,110,32);
+            move_setting(CancelModule,20,290,210,32);move_setting(RefreshModules,242,290,190,32);
         }
     }
     void layout() {
@@ -360,6 +372,16 @@ struct ControlPanel::Impl {
         EnableWindow(setting(CheckUpdate),!state.update_checking&&static_cast<bool>(actions.check_update));
         EnableWindow(setting(InstallUpdate),state.update_ready&&!state.update_checking&&static_cast<bool>(actions.install_update));
         EnableWindow(setting(LaterUpdate),state.update_available&&static_cast<bool>(actions.later_update));
+        if(state.modules!=previous.modules){
+            auto module_selection=SendMessageW(setting(Modules),CB_GETCURSEL,0,0);SendMessageW(setting(Modules),CB_RESETCONTENT,0,0);
+            for(auto& row:state.modules)SendMessageW(setting(Modules),CB_ADDSTRING,0,reinterpret_cast<LPARAM>(row.c_str()));
+            SendMessageW(setting(Modules),CB_SETCURSEL,module_selection<0?0:module_selection,0);
+        }
+        set_text(setting(ModuleInfo),state.module_detail);
+        EnableWindow(setting(InstallModule),state.modules_allowed&&!state.modules_busy&&static_cast<bool>(actions.change_module));
+        EnableWindow(setting(RemoveModule),state.modules_allowed&&!state.modules_busy&&static_cast<bool>(actions.change_module));
+        EnableWindow(setting(CancelModule),state.modules_busy&&static_cast<bool>(actions.cancel_module));
+        EnableWindow(setting(RefreshModules),!state.modules_busy&&static_cast<bool>(actions.refresh_modules));
         set_text(main_control(ProgressText), state.running && state.percent >= 0 ? std::to_wstring(std::clamp(state.percent, 0, 100)) + L" %" : L"");
         SendMessageW(main_control(Progress), PBM_SETPOS, std::clamp(state.percent, 0, 100), 0);
         ShowWindow(main_control(Progress), !settings_visible && state.running && state.percent >= 0 ? SW_SHOW : SW_HIDE);
@@ -553,8 +575,18 @@ struct ControlPanel::Impl {
         }
         if(id == SettingsSection && notification == CBN_SELCHANGE) {
             settings_section=static_cast<int>(SendMessageW(main_control(SettingsSection),CB_GETCURSEL,0,0));
-            if(settings_section<0 || settings_section>3) settings_section=0;
+            if(settings_section<0 || settings_section>4) settings_section=0;
             scroll=0;layout();return;
+        }
+        if(id==Modules&&notification==CBN_SELCHANGE){auto index=SendMessageW(setting(Modules),CB_GETCURSEL,0,0);if(index>=0&&actions.select_module)actions.select_module(static_cast<size_t>(index));return;}
+        if(notification==BN_CLICKED&&(id==InstallModule||id==RemoveModule||id==CancelModule||id==RefreshModules)){
+            if(!IsWindowEnabled(setting(id)))return;
+            try{
+                auto index=SendMessageW(setting(Modules),CB_GETCURSEL,0,0);
+                if((id==InstallModule||id==RemoveModule)&&index>=0&&actions.change_module)actions.change_module(static_cast<size_t>(index),id==RemoveModule);
+                if(id==CancelModule&&actions.cancel_module)actions.cancel_module();
+                if(id==RefreshModules&&actions.refresh_modules)actions.refresh_modules();
+            }catch(const std::exception& e){settings_error(exception_reason(e).c_str());}return;
         }
         if(id == ExportDiagnostics && actions.export_diagnostics) {
             try {actions.export_diagnostics();}catch(const std::exception& e){settings_error((L"Не удалось сохранить диагностику. "+exception_reason(e)).c_str());}
