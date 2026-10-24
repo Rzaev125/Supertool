@@ -514,6 +514,8 @@ int main(int argc,char** argv) {
         state.selected_module_installed=false;panel.update(state);check(control_text(child(window,142))==L"Загрузка отключена","missing local module incorrectly shown as available");
         state.module_downloads_allowed=true;panel.update(state);check(control_text(child(window,142))==L"Установить","missing online module lacks install action");
         state.selected_module_installed=true;panel.update(state);check(control_text(child(window,142))==L"Обновить / восстановить","installed module still asks for first installation");
+        state.module_downloads_allowed=false;state.selected_module_installed=false;state.selected_module_restorable=true;panel.update(state);check(IsWindowEnabled(child(window,142))&&control_text(child(window,142))==L"Включить локально","disabled local module cannot be restored without download");
+        state.modules_busy=true;panel.update(state);check(!IsWindowEnabled(child(window,142)),"busy local restore enabled");state.modules_busy=false;state.modules_allowed=false;panel.update(state);check(!IsWindowEnabled(child(window,142)),"conversion permits module mutation");
     });
     panel.shutdown();
     check(!panel.handle() && !IsWindow(window), "shutdown destroys native window");

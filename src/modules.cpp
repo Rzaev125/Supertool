@@ -94,6 +94,21 @@ ModuleStatus module_status(const fs::path& app,const ModuleSpec& spec){
  if(receipt){auto prefix=spec.id+"\n";if(receipt->starts_with(prefix)){auto n=receipt->find('\n',prefix.size());if(n!=std::string::npos)result.version=wide(receipt->substr(prefix.size(),n-prefix.size()));}}
  if(result.version.empty())result.version=L"версия неизвестна (офлайн)";return result;
 }
+bool local_module_available(const fs::path&app,const ModuleSpec&spec){try{
+ if(spec.id.empty()||spec.id.find_first_not_of("abcdefghijklmnopqrstuvwxyz")!=std::string::npos)return false;
+ const auto dir=app/L"modules"/spec.id;validate_local_path(dir,false);
+ for(const auto&name:spec.required){if(!safe_module_path(name))return false;auto p=dir/name;validate_local_path(p,false);if(!fs::is_regular_file(p))return false;}
+ return !spec.required.empty();
+}catch(...){return false;}}
+void restore_local_module(const fs::path&app,const ModuleSpec&spec,std::stop_token stop){
+ stopped(stop);ModuleLease lease(app,true);
+ if(!local_module_available(app,spec))throw std::runtime_error("Сохранённая локальная копия модуля отсутствует или неполна. Восстановите её из проверенного локального CAB по инструкции разработки.");
+ const auto pointer=app/L"modules"/(".active-"+spec.id);auto state=load_local_state(pointer,100);
+ if(!state||*state!="disabled")throw std::runtime_error("Модуль не находится в состоянии отключённой локальной копии. Обновите список модулей.");
+ if(!spec.dependency.empty()){auto&all=module_catalog();auto dependency=std::find_if(all.begin(),all.end(),[&](auto&d){return d.id==spec.dependency;});if(dependency==all.end()||!module_status(app,*dependency).installed)throw std::runtime_error("Сначала включите зависимый локальный модуль PDF.");}
+ stopped(stop);
+ if(!DeleteFileW(pointer.c_str()))throw std::runtime_error("Не удалось включить локальный модуль. Предыдущее состояние сохранено.");
+}
 void verify_module_archive(const fs::path& cab,const ModuleSpec& s){validate_local_path(cab,false);if(!fs::is_regular_file(cab)||fs::file_size(cab)!=s.bytes||file_sha256(cab)!=s.sha256)bad();}
 void extract_module_cab(const fs::path& cab,const fs::path& fresh,const ModuleSpec& s,std::stop_token stop,bool durable_files){
  stopped(stop);verify_module_archive(cab,s);validate_local_path(fresh,false);if(!fs::is_directory(fresh)||!fs::is_empty(fresh))bad();

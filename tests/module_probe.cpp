@@ -8,6 +8,10 @@ int wmain(int argc,wchar_t** argv){try{
  std::filesystem::path root=argv[1],assets=argv[2];std::filesystem::create_directories(root);
  for(auto& spec:module_catalog()){
   if(std::wstring(argv[3])!=L"all"&&std::wstring(argv[3])!=std::wstring(spec.id.begin(),spec.id.end()))continue;
+  if(assets==L"--restore-local"){
+   restore_local_module(root,spec,{});if(!module_status(root,spec).installed)throw std::runtime_error("local copy not restored");
+   std::cout<<spec.id<<": existing local copy enabled; no download or copy\n";continue;
+  }
   UpdateTransport transport;
   if(assets!=L"online")transport=[&](auto&,auto,std::ostream& out,auto){auto name=L"ShiftWheel-module-"+std::wstring(spec.id.begin(),spec.id.end())+L"-"+spec.version+L".cab";std::ifstream f(assets/name,std::ios::binary);if(!f)throw std::runtime_error("asset missing");out<<f.rdbuf();};
   install_module(root,spec,{}, {},transport);if(!module_status(root,spec).installed)throw std::runtime_error("not installed");

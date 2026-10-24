@@ -14,6 +14,10 @@ struct ModuleInstallResult { bool cache_retained=false; };
 const std::vector<ModuleSpec>& module_catalog();
 bool safe_module_path(std::string_view path);
 ModuleStatus module_status(const std::filesystem::path& app,const ModuleSpec& spec);
+// Same availability checks as legacy modules, ignoring only the disabled pointer.
+bool local_module_available(const std::filesystem::path& app,const ModuleSpec& spec);
+// Re-enables an existing local copy; never downloads, copies or deletes its files.
+void restore_local_module(const std::filesystem::path& app,const ModuleSpec& spec,std::stop_token stop);
 void verify_module_archive(const std::filesystem::path& cab,const ModuleSpec& spec);
 // Developer staging may skip per-file disk flush; production installation keeps it.
 void extract_module_cab(const std::filesystem::path& cab,const std::filesystem::path& fresh_directory,const ModuleSpec& spec,std::stop_token stop,bool durable_files=true);

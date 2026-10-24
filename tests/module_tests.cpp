@@ -24,6 +24,18 @@ int main(int argc,char** argv){try{
   fs::path fixtures=argv[1];auto cab=fixtures/L"good.cab";
   ModuleSpec spec{"ffmpeg",L"Fixture",L"0.9.0",L"https://example.com/module.cab",file_sha256(cab),fs::file_size(cab),7+fs::file_size(fixtures/L"inventory.txt"),2,"",{"sub/file.txt"},file_sha256(fixtures/L"inventory.txt")};
   auto copy=[&](const auto&,auto,std::ostream& out,std::stop_token){std::ifstream in(cab,std::ios::binary);out<<in.rdbuf();};
+  auto legacy=root/L"modules/ffmpeg";fs::create_directories(legacy/L"sub");fs::copy_file(fixtures/L"file.txt",legacy/L"sub/file.txt");
+  std::ofstream(legacy/L"personal.txt")<<"keep";
+  remove_module(root,spec);check(!module_status(root,spec).installed&&local_module_available(root,spec),"disabled local copy must be restorable");
+  restore_local_module(root,spec,{});check(module_status(root,spec).installed&&module_directory(root,"ffmpeg")==legacy,"local restore did not re-enable original copy");
+  check(fs::exists(legacy/L"personal.txt")&&!fs::exists(root/L"modules/.active-ffmpeg"),"local restore changed unrelated files");
+  remove_module(root,spec);{ModuleLease busy(root,false);rejects([&]{restore_local_module(root,spec,{});});}
+  fs::remove(legacy/L"sub/file.txt");rejects([&]{restore_local_module(root,spec,{});});check(!module_status(root,spec).installed,"missing local files activated");
+  fs::copy_file(fixtures/L"file.txt",legacy/L"sub/file.txt");std::stop_source cancelled;cancelled.request_stop();rejects([&]{restore_local_module(root,spec,cancelled.get_token());});
+  save_local_state(root/L"modules/.active-ffmpeg","../corrupt");rejects([&]{restore_local_module(root,spec,{});});
+  save_local_state(root/L"modules/.active-ffmpeg","disabled");restore_local_module(root,spec,{});
+  auto unsafe=spec;unsafe.required={"../escape"};check(!local_module_available(root,unsafe),"unsafe local restore path accepted");
+  remove_module(root,spec);auto dependent=spec;dependent.dependency="pdfium";rejects([&]{restore_local_module(root,dependent,{});});check(!module_status(root,spec).installed,"missing dependency enabled local module");restore_local_module(root,spec,{});
   auto bootstrap_stage=root/L"developer-extraction";fs::create_directories(bootstrap_stage);
   extract_module_cab(cab,bootstrap_stage,spec,{},false);
   check(file_sha256(bootstrap_stage/L"sub/file.txt")==file_sha256(fixtures/L"file.txt"),"developer extraction preserves pinned bytes");

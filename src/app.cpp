@@ -255,10 +255,12 @@ private:
         if(selected_module_<module_catalog().size()){
             auto& m=module_catalog()[selected_module_];auto total=m.bytes;
             const auto& current=module_status_cache_[m.id];state.selected_module_installed=current.installed;
+            state.selected_module_restorable=!current.installed&&local_module_cache_[m.id];
             std::wstring dep=L"нет";
             if(!m.dependency.empty())for(auto& d:module_catalog())if(d.id==m.dependency){dep=d.name;if(!module_status_cache_[m.dependency].installed)total+=d.bytes;}
             auto mib=[](auto n){return std::to_wstring((n+1024*1024-1)/(1024*1024))+L" МБ";};
-            state.module_detail=m.name+L"\r\nСостояние: "+(current.installed?L"доступен локально; "+current.version:L"файлы модуля не найдены")+L"\r\nВерсия пакета в каталоге: "+m.version+L"; загрузка: "+mib(m.bytes)+L"; на диске: "+mib(m.unpacked)+L"\r\nЗависимости: "+dep+L". Общая загрузка: "+mib(total)+L".\r\n";
+            state.module_detail=m.name+L"\r\nСостояние: "+(current.installed?L"доступен локально; "+current.version:state.selected_module_restorable?L"отключён; локальная копия сохранена":L"локальные файлы отсутствуют или неполны")+L"\r\nВерсия пакета в каталоге: "+m.version+L"; загрузка: "+mib(m.bytes)+L"; на диске: "+mib(m.unpacked)+L"\r\nЗависимости: "+dep+L". Общая загрузка: "+mib(total)+L".\r\n";
+            if(state.selected_module_restorable)state.module_detail+=L"Сохранена отключённая локальная копия. Нажмите «Включить локально» — скачивание не требуется.\r\n";
             {std::lock_guard lock(module_mutex_);state.module_detail+=module_notice_;}
             if(!state.modules_allowed)state.module_detail+=L"\r\nИзменение модулей доступно после завершения/очистки очереди.";
         }
@@ -291,12 +293,11 @@ private:
     void scan_modules(){
         module_rows_.clear();
         for(auto& spec:module_catalog()){
-            try{auto status=module_status(executable_.parent_path(),spec);module_status_cache_[spec.id]=status;module_rows_.push_back(spec.name+L" — "+(status.installed?L"доступен локально; "+status.version:L"не установлен"));}
-            catch(...){module_status_cache_[spec.id]={};module_rows_.push_back(spec.name+L" — ошибка; повторите установку");}
+            try{auto status=module_status(executable_.parent_path(),spec);module_status_cache_[spec.id]=status;local_module_cache_[spec.id]=module_directory(executable_.parent_path(),spec.id)==executable_.parent_path()/L"modules"/L".disabled"/spec.id&&local_module_available(executable_.parent_path(),spec);module_rows_.push_back(spec.name+L" — "+(status.installed?L"доступен локально; "+status.version:local_module_cache_[spec.id]?L"отключён; локальная копия сохранена":L"не установлен"));}
+            catch(...){module_status_cache_[spec.id]={};local_module_cache_[spec.id]=false;module_rows_.push_back(spec.name+L" — ошибка; повторите установку");}
         }
     }
     void change_module(size_t index,bool remove){
-        if(local_development_build&&!remove)throw std::runtime_error("Автозагрузка модулей отключена в локальной сборке. Используйте локальные проверенные CAB по инструкции разработки.");
         if(modules_busy_||worker_.busy()||queue_.pending()||install_requested_)throw std::runtime_error("Сначала завершите или очистите очередь.");
         if(index>=module_catalog().size())return;
         if(module_thread_.joinable())module_thread_.join();
@@ -304,11 +305,15 @@ private:
         // A held lease in a separate CLI must also prevent expensive downloads.
         {ModuleLease available(root,true);}
         modules_busy_=true;
-        {std::lock_guard lock(module_mutex_);module_notice_=remove?L"Удаление…":L"Подготовка загрузки…";}
+        {std::lock_guard lock(module_mutex_);module_notice_=remove?L"Удаление…":local_development_build?L"Включение локальной копии…":L"Подготовка загрузки…";}
         module_thread_=std::jthread([this,spec,root,remove](std::stop_token stop){
             auto notice=[this](std::wstring text){std::lock_guard lock(module_mutex_);module_notice_=std::move(text);PostMessageW(window_,wm_modules,1,0);};
             try{
                 if(remove)remove_module(root,spec);
+                else if(local_development_build){
+                    if(!spec.dependency.empty())for(auto&d:module_catalog())if(d.id==spec.dependency&&!module_status(root,d).installed)restore_local_module(root,d,stop);
+                    restore_local_module(root,spec,stop);
+                }
                 else {
                     bool retained_download=false;
                     auto install=[&](const ModuleSpec& item){
@@ -320,7 +325,7 @@ private:
                     install(spec);
                     if(retained_download){notice(L"Модуль установлен и проверен. Временный CAB занят другой программой; повторим очистку при следующей установке модуля.");PostMessageW(window_,wm_modules,0,0);return;}
                 }
-                notice(remove?L"Модуль отключён. Неизвестные и старые офлайн-файлы сохранены в modules.":L"Модуль установлен и проверен. Можно конвертировать файлы.");
+                notice(remove?L"Модуль отключён. Неизвестные и старые офлайн-файлы сохранены в modules.":local_development_build?L"Сохранённая локальная копия включена. Скачивание и повторное копирование не выполнялись.":L"Модуль установлен и проверен. Можно конвертировать файлы.");
             }catch(const std::exception& e){notice(from_utf8(e.what()));}
             PostMessageW(window_,wm_modules,0,0);
         });refresh();
@@ -566,6 +571,7 @@ private:
     std::wstring module_notice_=L"Установка — по выбранному компоненту. JPEG, PNG, BMP и TIFF доступны без загрузки. Проверка SHA-256 встроена; подпись пакетов пока не подключена.";
     std::vector<std::wstring> module_rows_;
     std::map<std::string,ModuleStatus> module_status_cache_;
+    std::map<std::string,bool> local_module_cache_;
     size_t selected_module_=0;
     bool modules_busy_=false;
     std::atomic<bool> checking_{false};

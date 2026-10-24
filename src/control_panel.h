@@ -27,6 +27,7 @@ struct PanelState {
     bool modules_busy=false,modules_allowed=true;
     std::map<std::string,bool> installed_modules;
     bool selected_module_installed=false;
+    bool selected_module_restorable=false;
 };
 struct PanelActions {
     std::function<void()> cancel, pause_queue, clear_queue, export_diagnostics, clear_history;
