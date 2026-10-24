@@ -1,4 +1,5 @@
 #include "profiles.h"
+#include "job_store.h"
 #include <windows.h>
 #include <fstream>
 #include <algorithm>
@@ -27,5 +28,14 @@ int main(){try{
  bad={};auto v=make_profile(Category::Video,{},1);v.format=Format::Webm;bad.profiles.push_back(v);reject([&]{validate_profiles(bad);});
  check(profile_consequences(p).find(L"1920")!=std::wstring::npos&&profile_consequences(p).find(L"HDR")!=std::wstring::npos,"missing consequences");
  std::ofstream(root/L"partial.ini")<<"version=1\nprofile."<<p.id<<".name=partial\n";reject([&]{load_settings(root/L"partial.ini");});
+ auto input=root/L"a.png";std::ofstream(input)<<"fixture";
+ JobQueue q;q.enqueue_grouped({input},Format::Jpeg,t);auto original=*q.next();
+ t.profiles.clear();t.active_profiles.clear();check(q.next()->profile_name==p.name&&q.next()->options.image_max_dimension==1920,"admission profile not frozen");
+ ExecutionFacts facts;facts.elapsed_ms=123;facts.output_bytes=45;facts.stages={"wic"};
+ q.start(original.id);q.complete(original.id,JobState::Succeeded,root/L"a.jpg",L"ok");q.find(original.id)->facts=facts;
+ save_queue(root/L"queue.dat",q.snapshot());auto saved=load_queue(root/L"queue.dat");check(saved->jobs[0].facts->output_bytes==45&&saved->jobs[0].profile_name==p.name,"history facts/profile lost");
+ q.enqueue_retry(saved->jobs[0]);check(q.next()->profile_name==p.name&&!q.next()->facts&&q.next()->options.image_max_dimension==1920,"retry did not freeze/reset");
+ auto count=q.items().size();reject([&]{q.enqueue_grouped({input,root/L"bad.docx"},Format::Jpeg,t);});check(q.items().size()==count,"profile admission not atomic");
+ auto invalid=saved.value();invalid.jobs[0].facts->stages={"invented-gpu"};reject([&]{save_queue(root/L"bad-queue.dat",invalid);});
  std::filesystem::remove_all(root);std::cout<<"profile contracts PASS\n";return 0;
 }catch(const std::exception&e){std::cerr<<e.what()<<'\n';return 1;}}

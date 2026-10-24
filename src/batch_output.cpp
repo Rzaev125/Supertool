@@ -1,6 +1,7 @@
 #include "job_queue.h"
 #include "file_policy.h"
 #include "diagnostics.h"
+#include "profiles.h"
 #include <windows.h>
 
 namespace shiftwheel {
@@ -23,6 +24,15 @@ fs::path create_batch_folder(const fs::path& parent, Format format) {
     }
     throw std::runtime_error("Не удалось подобрать свободное имя папки результатов группы.");
 }
+}
+void JobQueue::enqueue_grouped(const std::vector<fs::path>& files,Format format,const Settings&settings){
+    validate_profiles(settings);
+    std::vector<ResolvedProfile> resolved;resolved.reserve(files.size());
+    for(auto&file:files)resolved.push_back(resolve_profile(file,format,settings));
+    auto prepared=*this;
+    prepared.enqueue_grouped(files,format,settings.conversion,settings.output_directory);
+    for(size_t i=0;i<files.size();++i){auto&j=prepared.jobs_[prepared.jobs_.size()-files.size()+i];j.options=std::move(resolved[i].options);j.profile_id=std::move(resolved[i].profile_id);j.profile_name=std::move(resolved[i].profile_name);}
+    *this=std::move(prepared);
 }
 void JobQueue::enqueue_grouped(const std::vector<std::filesystem::path>& files, Format format,
                                const ConversionOptions& options, const std::filesystem::path& output_directory) {

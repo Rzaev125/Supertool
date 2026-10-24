@@ -1,5 +1,6 @@
 #pragma once
 #include "options.h"
+#include "execution.h"
 #include <algorithm>
 #include <cstdint>
 #include <stdexcept>
@@ -17,6 +18,9 @@ struct ConversionJob {
     uint64_t input_size = 0;
     int64_t input_modified = 0;
     bool input_identity = false;
+    std::string profile_id;
+    std::wstring profile_name;
+    std::optional<ExecutionFacts> facts;
 };
 struct BatchOutcome {
     uint64_t id = 0;
@@ -37,6 +41,12 @@ public:
     // A multi-file drop shares one new result folder; single-file jobs keep their destination.
     void enqueue_grouped(const std::vector<std::filesystem::path>& files, Format format,
                          const ConversionOptions& options, const std::filesystem::path& output_directory);
+    void enqueue_grouped(const std::vector<std::filesystem::path>& files, Format format, const Settings& settings);
+    void enqueue_retry(const ConversionJob& previous) {
+        auto id=previous.profile_id;auto name=previous.profile_name;
+        enqueue({previous.input},previous.format,previous.options,previous.output_directory);
+        jobs_.back().profile_id=std::move(id);jobs_.back().profile_name=std::move(name);
+    }
     void enqueue(const std::vector<std::filesystem::path>& files, Format format,
                  const ConversionOptions& options, const std::filesystem::path& output_directory) {
         validate_options(options);

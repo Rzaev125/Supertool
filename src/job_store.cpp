@@ -1,5 +1,6 @@
 #include "job_store.h"
 #include "file_policy.h"
+#include "profiles.h"
 #include <fstream>
 #include <iomanip>
 #include <set>
@@ -40,6 +41,8 @@ void validate(const QueueSnapshot& s){
  for(const auto& j:s.jobs){
   check_id(j.id);check_id(j.batch_id);if(!ids.insert(j.id).second||j.state<JobState::Queued||j.state>JobState::Interrupted||!supports_conversion(j.input,j.format))invalid();
   validate_options(j.options);stored_path(j.input);
+  if(j.profile_id.empty()!=j.profile_name.empty()||(!j.profile_id.empty()&&(!valid_profile_id(j.profile_id)||!valid_profile_name(j.profile_name))))invalid();
+  if(j.facts&&(!valid_execution_facts(*j.facts)||(j.state==JobState::Queued)|| (j.state!=JobState::Succeeded&&j.facts->output_bytes)))invalid();
   if(!j.output_directory.empty())stored_path(j.output_directory);if(!j.output.empty())stored_path(j.output);
   if(j.state==JobState::Queued)++pending;else if(j.state==JobState::Running)++active;else ++finished;
  }
@@ -69,25 +72,29 @@ std::optional<std::string> load_local_state(const fs::path& path,size_t limit){
  std::string text(info.nFileSizeLow,'\0');DWORD got=0;if(!ReadFile(file.h,text.data(),static_cast<DWORD>(text.size()),&got,nullptr)||got!=text.size())invalid();return text;
 }
 void save_queue(const fs::path& path,const QueueSnapshot& s){
- validate(s);std::ostringstream o;o<<"SWQ3\n"<<s.jobs.size()<<' '<<s.batches.size()<<' '<<s.completed_batches.size()<<'\n';
+ validate(s);std::ostringstream o;o<<"SWQ4\n"<<s.jobs.size()<<' '<<s.batches.size()<<' '<<s.completed_batches.size()<<'\n';
  for(const auto& j:s.jobs){const auto& a=j.options;
   o<<j.id<<' '<<j.batch_id<<' '<<static_cast<int>(j.state)<<' '<<static_cast<int>(j.format)<<' '<<j.input_identity<<' '<<j.input_size<<' '<<j.input_modified<<' '
    <<static_cast<int>(a.quality)<<' '<<static_cast<int>(a.resources)<<' '<<a.image_max_dimension<<' '<<a.video_max_height<<' '<<a.audio_bitrate_kbps<<' '<<a.pdf_dpi<<' '<<a.pdf_ocr<<' '<<static_cast<int>(a.video_acceleration)<<' '<<static_cast<int>(a.video_codec)<<' '<<static_cast<int>(a.image_metadata)<<' '<<std::quoted(a.ocr_languages)<<' '
-   <<std::quoted(utf8(j.input.wstring()))<<' '<<std::quoted(utf8(j.output_directory.wstring()))<<' '<<std::quoted(utf8(j.output.wstring()))<<' '<<std::quoted(utf8(j.message))<<'\n';
+   <<std::quoted(utf8(j.input.wstring()))<<' '<<std::quoted(utf8(j.output_directory.wstring()))<<' '<<std::quoted(utf8(j.output.wstring()))<<' '<<std::quoted(utf8(j.message))<<' '
+   <<std::quoted(j.profile_id)<<' '<<std::quoted(utf8(j.profile_name))<<' '<<j.facts.has_value();
+  if(j.facts){auto&f=*j.facts;o<<' '<<f.elapsed_ms.has_value()<<' '<<f.elapsed_ms.value_or(0)<<' '<<f.output_bytes.has_value()<<' '<<f.output_bytes.value_or(0)<<' '<<std::quoted(f.encoder)<<' '<<std::quoted(f.backend)<<' '<<f.fallback<<' '<<f.stages.size();for(auto&v:f.stages)o<<' '<<std::quoted(v);}o<<'\n';
  }
  for(const auto& b:s.batches)write_batch(o,b);for(const auto& b:s.completed_batches)write_batch(o,b);
  save_local_state(path,o.str());
 }
 std::optional<QueueSnapshot> load_queue(const fs::path& path){
  auto text=load_local_state(path);if(!text)return {};std::istringstream in(*text);std::string magic;size_t jobs=0,batches=0,completed=0;
- if(!(in>>magic>>jobs>>batches>>completed)||(magic!="SWQ1"&&magic!="SWQ2"&&magic!="SWQ3")||jobs>357||batches>357||completed>100)invalid();QueueSnapshot s;
+ if(!(in>>magic>>jobs>>batches>>completed)||(magic!="SWQ1"&&magic!="SWQ2"&&magic!="SWQ3"&&magic!="SWQ4")||jobs>357||batches>357||completed>100)invalid();QueueSnapshot s;
  for(size_t i=0;i<jobs;++i){ConversionJob j;auto& a=j.options;int state=0,format=0,q=0,r=0,gpu=0,codec=0,metadata=0;std::string input,dir,output,msg;
   if(!(in>>j.id>>j.batch_id>>state>>format>>j.input_identity>>j.input_size>>j.input_modified>>q>>r>>a.image_max_dimension>>a.video_max_height>>a.audio_bitrate_kbps>>a.pdf_dpi>>a.pdf_ocr>>gpu))invalid();
   if(magic!="SWQ1"&&!(in>>codec))invalid();
-  if(magic=="SWQ3"&&!(in>>metadata))invalid();
+  if((magic=="SWQ3"||magic=="SWQ4")&&!(in>>metadata))invalid();
   if(!(in>>std::quoted(a.ocr_languages)>>std::quoted(input)>>std::quoted(dir)>>std::quoted(output)>>std::quoted(msg)))invalid();
   j.state=static_cast<JobState>(state);j.format=static_cast<Format>(format);a.quality=static_cast<QualityPreset>(q);a.resources=static_cast<ResourceMode>(r);a.video_acceleration=static_cast<VideoAcceleration>(gpu);a.video_codec=static_cast<VideoCodec>(codec);a.image_metadata=static_cast<ImageMetadata>(metadata);
-  j.input=wide(input);j.output_directory=wide(dir);j.output=wide(output);j.message=wide(msg);s.jobs.push_back(std::move(j));
+  j.input=wide(input);j.output_directory=wide(dir);j.output=wide(output);j.message=wide(msg);
+  if(magic=="SWQ4"){bool has=false;std::string name;if(!(in>>std::quoted(j.profile_id)>>std::quoted(name)>>has))invalid();j.profile_name=wide(name);if(has){ExecutionFacts f;bool elapsed=false,bytes=false;uint64_t ms=0,size=0;size_t n=0;if(!(in>>elapsed>>ms>>bytes>>size>>std::quoted(f.encoder)>>std::quoted(f.backend)>>f.fallback>>n)||n>16)invalid();if(elapsed)f.elapsed_ms=ms;if(bytes)f.output_bytes=size;for(size_t k=0;k<n;++k){std::string v;if(!(in>>std::quoted(v)))invalid();f.stages.push_back(v);}j.facts=std::move(f);}}
+  s.jobs.push_back(std::move(j));
  }
  for(size_t i=0;i<batches;++i)s.batches.push_back(read_batch(in));for(size_t i=0;i<completed;++i)s.completed_batches.push_back(read_batch(in));
  in>>std::ws;if(!in.eof())invalid();validate(s);return s;
