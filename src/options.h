@@ -19,10 +19,19 @@ struct ConversionOptions {
     ImageMetadata image_metadata = ImageMetadata::Remove;
 };
 enum class NotificationMode { All, Errors, None };
+struct ConversionProfile {
+    std::string id;
+    std::wstring name;
+    Category category = Category::Image;
+    Format format = Format::Jpeg;
+    ConversionOptions options;
+};
 struct Settings {
     ConversionOptions conversion;
     std::filesystem::path output_directory;
     std::map<Category, std::vector<Format>> wheels;
+    std::vector<ConversionProfile> profiles;
+    std::map<Category, std::string> active_profiles;
     bool auto_show_progress = false;
     NotificationMode notifications = NotificationMode::All;
     bool start_with_windows = false, automatic_updates = true;

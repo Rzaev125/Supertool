@@ -1,4 +1,5 @@
 #include "options.h"
+#include "profiles.h"
 #include <windows.h>
 #include <algorithm>
 #include <atomic>
@@ -52,6 +53,7 @@ const char* category_key(Category category) {
 }
 void validate_settings(const Settings& settings) {
     validate_options(settings.conversion);
+    validate_profiles(settings);
     if (settings.notifications != NotificationMode::All && settings.notifications != NotificationMode::Errors && settings.notifications != NotificationMode::None) invalid();
     if (settings.update_channel.size() > 4096 || settings.update_channel.find_first_of(L"\r\n\t ") != std::wstring::npos || (!settings.update_channel.empty() && !settings.update_channel.starts_with(L"https://"))) invalid();
     auto path = settings.output_directory.wstring();
@@ -122,6 +124,8 @@ Settings read_config(const fs::path& path, bool options_only, bool missing_allow
     wide(data); // Reject malformed UTF-8 even in comments or unused text.
     if (data.starts_with("\xef\xbb\xbf")) data.erase(0, 3);
     Settings settings; std::set<std::string> keys;
+    std::map<std::string,ConversionProfile> profiles;
+    std::map<std::string,std::set<std::string>> profile_fields;
     for (size_t begin = 0; begin < data.size();) {
         auto end = data.find('\n', begin); if (end == std::string::npos) end = data.size();
         auto line = std::string_view(data).substr(begin, end - begin); begin = end + 1;
@@ -133,7 +137,17 @@ Settings read_config(const fs::path& path, bool options_only, bool missing_allow
         if (!keys.insert(std::string(key)).second) invalid();
         if (key == "version") { if (value != "1") invalid(); }
         else if (conversion_field(settings.conversion, key, value)) {}
-        else if (!options_only && key == "notifications") {
+        else if (!options_only && key.starts_with("profile.")) {
+            auto suffix=key.substr(8);auto dot=suffix.find('.');if(dot==std::string_view::npos)invalid();
+            auto id=std::string(suffix.substr(0,dot));auto field=suffix.substr(dot+1);if(!valid_profile_id(id)||profiles.size()>32)invalid();
+            auto& p=profiles[id];p.id=id;profile_fields[id].insert(std::string(field));
+            if(field=="name")p.name=wide(value);
+            else if(field=="category")p.category=parse_profile_category(value);
+            else if(field=="format")p.format=parse_format(wide(value));
+            else if(!conversion_field(p.options,field,value))invalid();
+        } else if (!options_only && key.starts_with("active_profile.")) {
+            settings.active_profiles[parse_profile_category(key.substr(15))]=std::string(value);
+        } else if (!options_only && key == "notifications") {
             if(value == "all") settings.notifications = NotificationMode::All;
             else if(value == "errors") settings.notifications = NotificationMode::Errors;
             else if(value == "none") settings.notifications = NotificationMode::None; else invalid();
@@ -163,6 +177,7 @@ Settings read_config(const fs::path& path, bool options_only, bool missing_allow
         const std::vector<Format> previous{Format::Jpeg, Format::Png, Format::Bmp, Format::Avif, Format::Webp, Format::Tiff};
         if (found != settings.wheels.end() && found->second == previous) found->second.push_back(Format::Heic);
     }
+    for(auto&[id,p]:profiles){if(profile_fields[id].size()!=14)invalid();settings.profiles.push_back(std::move(p));}
     validate_settings(settings); return settings;
 }
 std::string serialize_options(const ConversionOptions& o) {
@@ -230,6 +245,12 @@ void save_settings(const fs::path& path, const Settings& settings) {
         for (size_t i = 0; i < formats.size(); ++i) { if (i) text += ','; text += narrow(extension(formats[i]) + 1); }
         text += '\n';
     }
+    for(const auto& p:settings.profiles){
+        const auto prefix="profile."+p.id+".";
+        text+=prefix+"name="+narrow(p.name)+"\n"+prefix+"category="+profile_category_key(p.category)+"\n"+prefix+"format="+narrow(extension(p.format)+1)+"\n";
+        const auto fields=serialize_options(p.options);for(size_t begin=fields.find('\n')+1;begin<fields.size();){auto end=fields.find('\n',begin);text+=prefix+fields.substr(begin,end-begin)+"\n";begin=end+1;}
+    }
+    for(const auto&[c,id]:settings.active_profiles)text+="active_profile."+std::string(profile_category_key(c))+"="+id+"\n";
     if (text.size() > max_config_size) invalid();
     static std::atomic<unsigned long> serial{0};
     fs::path temporary; bool created = false;
