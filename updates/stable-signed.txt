@@ -1,6 +1,6 @@
 version=1.0.0
-url=https://github.com/Rzaev125/Supertool/releases/download/v1.0.0/ShiftWheel-1.0.0-win-x64-setup.exe
-size=557014844
-sha256=e09e3af46de0a27b1e3e164fc1728134393ee314f689690b274e39ccb5866997
+url=https://github.com/Rzaev125/Supertool/releases/download/v1.0.0/Supertool-1.0.0-win-x64-setup.exe
+size=557038473
+sha256=919eb62015b9e629ce8c414bb0f6809d7aa2cb21dc209ff9a692e0015cbffa93
 key_id=shiftwheel-prod-1
-signature=768e04905c858449411907503ea1a180931b545c36ace00567c910a561aefd510041fedb487773b83a923a51995b79d54a1342539ff8aa43157f6b6372287143
+signature=2070c6a3953e52961553691b1fa51606837b252bfb8f1cacd379dbb361de918c34375ecdad80bd42a41a3a0400365e7d8d0ebbf1d200a353cd99971183153087
