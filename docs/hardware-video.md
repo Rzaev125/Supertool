@@ -2,7 +2,7 @@
 
 HEVC/AV1 support was added in 0.11: see [video-codecs.md](video-codecs.md) for container choices, same-codec fallback and current validation. The H.264 behavior and historical measurements below remain applicable to that codec.
 
-ShiftWheel 0.5.0 can encode MP4, MKV and MOV video using NVIDIA NVENC,
+Supertool 0.5.0 can encode MP4, MKV and MOV video using NVIDIA NVENC,
 Intel Quick Sync Video (QSV), or AMD AMF. The automatic setting is the
 default for new settings and older INI files without the new key:
 
@@ -35,7 +35,7 @@ selection to the next candidate; if none initializes, CPU encoding starts.
 A successful small probe also cannot guarantee that every source size or
 driver state will work during the full conversion.
 
-If the selected GPU fails during conversion, ShiftWheel removes that
+If the selected GPU fails during conversion, Supertool removes that
 attempt's private output directory and retries once using `libx264`.
 The CPU retry has a distinct diagnostic log. Its failure is final.
 Hardware output is staged separately, so cleanup does not remove the

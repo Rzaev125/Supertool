@@ -44,7 +44,7 @@ jobs:
         run: |
           if ($env:RELEASE_VERSION -notmatch '^\d{1,5}\.\d{1,5}\.\d{1,5}$') { throw 'Invalid version.' }
           if ($env:UPDATE_PUBLIC_KEY_HEX -notmatch '^[a-fA-F0-9]{144}$' -or $env:UPDATE_KEY_ID -notmatch '^[A-Za-z0-9_-]{1,64}$') { throw 'Configure the real public signing pin and key ID in the release environment.' }
-          if ((Get-Content CMakeLists.txt -Raw) -notmatch ('project\(ShiftWheel VERSION '+[regex]::Escape($env:RELEASE_VERSION)+' ')) { throw 'Version must match committed source.' }
+          if ((Get-Content CMakeLists.txt -Raw) -notmatch ('project\(Supertool VERSION '+[regex]::Escape($env:RELEASE_VERSION)+' ')) { throw 'Version must match committed source.' }
           python -m pip install -r tests/requirements.txt
           if ($LASTEXITCODE) { throw 'Test dependencies failed.' }
           cmake -S . -B build -G 'Visual Studio 17 2022' -A x64 -DSHIFTWHEEL_LOCAL_DEVELOPMENT=OFF
@@ -70,7 +70,7 @@ jobs:
           CODE_SIGN_PFX_PASSWORD: ${{ secrets.CODE_SIGN_PFX_PASSWORD }}
         run: |
           if (-not $env:CODE_SIGN_PFX_BASE64 -or -not $env:CODE_SIGN_PFX_PASSWORD) { throw 'Code-signing certificate secrets are required.' }
-          $pfx=Join-Path $env:RUNNER_TEMP 'ShiftWheel-release.pfx'
+          $pfx=Join-Path $env:RUNNER_TEMP 'Supertool-release.pfx'
           try {
             [IO.File]::WriteAllBytes($pfx,[Convert]::FromBase64String($env:CODE_SIGN_PFX_BASE64))
             $cert=Import-PfxCertificate -FilePath $pfx -Password (ConvertTo-SecureString $env:CODE_SIGN_PFX_PASSWORD -AsPlainText -Force) -CertStoreLocation Cert:\CurrentUser\My
@@ -78,18 +78,18 @@ jobs:
           } finally { if(Test-Path -LiteralPath $pfx){Remove-Item -LiteralPath $pfx -Force} }
       - name: Sign application and build packages
         run: |
-          ./scripts/sign-windows.ps1 -Path build/Release/ShiftWheel.exe -CertificateThumbprint $env:RELEASE_CERT_THUMBPRINT
+          ./scripts/sign-windows.ps1 -Path build/Release/Supertool.exe -CertificateThumbprint $env:RELEASE_CERT_THUMBPRINT
           foreach($kind in @('mp4','xlsx','pdf','avif','webp','wav','heic','pptx')) {
-            & build/Release/ShiftWheel.exe --render-preview "build/wheel-$kind.png" "sample.$kind"
+            & build/Release/Supertool.exe --render-preview "build/wheel-$kind.png" "sample.$kind"
             if($LASTEXITCODE){throw 'Preview failed.'}
           }
           ./scripts/package.ps1 -Distribution full
           ./scripts/package.ps1 -Distribution core
           ./scripts/build-installer.ps1 -Version $env:RELEASE_VERSION
-          ./scripts/build-installer.ps1 -Version $env:RELEASE_VERSION -Distribution core -PayloadDirectory "out/ShiftWheel-$env:RELEASE_VERSION-core"
-          ./scripts/sign-windows.ps1 -Path "out/ShiftWheel-$env:RELEASE_VERSION-win-x64-setup.exe" -CertificateThumbprint $env:RELEASE_CERT_THUMBPRINT
-          ./scripts/sign-windows.ps1 -Path "out/ShiftWheel-$env:RELEASE_VERSION-core-win-x64-setup.exe" -CertificateThumbprint $env:RELEASE_CERT_THUMBPRINT
-          git archive --format=zip --prefix="ShiftWheel-$env:RELEASE_VERSION-source/" -o "out/ShiftWheel-$env:RELEASE_VERSION-source.zip" HEAD
+          ./scripts/build-installer.ps1 -Version $env:RELEASE_VERSION -Distribution core -PayloadDirectory "out/Supertool-$env:RELEASE_VERSION-core"
+          ./scripts/sign-windows.ps1 -Path "out/Supertool-$env:RELEASE_VERSION-win-x64-setup.exe" -CertificateThumbprint $env:RELEASE_CERT_THUMBPRINT
+          ./scripts/sign-windows.ps1 -Path "out/Supertool-$env:RELEASE_VERSION-core-win-x64-setup.exe" -CertificateThumbprint $env:RELEASE_CERT_THUMBPRINT
+          git archive --format=zip --prefix="Supertool-$env:RELEASE_VERSION-source/" -o "out/Supertool-$env:RELEASE_VERSION-source.zip" HEAD
           if($LASTEXITCODE){throw 'Source archive failed.'}
       - name: Sign manifest and verify with native parser
         env:
@@ -98,7 +98,7 @@ jobs:
           ./scripts/make-update-manifest.ps1 -Version $env:RELEASE_VERSION
           Copy-Item updates/stable.txt out/stable.txt
           if (-not $env:UPDATE_SIGNING_KEY_PEM) { throw 'Manifest signing key is required.' }
-          $private=Join-Path $env:RUNNER_TEMP 'ShiftWheel-update.pem';$public=Join-Path $env:RUNNER_TEMP 'ShiftWheel-public.txt'
+          $private=Join-Path $env:RUNNER_TEMP 'Supertool-update.pem';$public=Join-Path $env:RUNNER_TEMP 'Supertool-public.txt'
           try {
             [IO.File]::WriteAllText($private,$env:UPDATE_SIGNING_KEY_PEM,[Text.UTF8Encoding]::new($false))
             [IO.File]::WriteAllText($public,$env:UPDATE_PUBLIC_KEY_HEX,[Text.UTF8Encoding]::new($false))
@@ -113,18 +113,18 @@ jobs:
       - name: Save reviewable packages
         uses: actions/upload-artifact@v7
         with:
-          name: ShiftWheel-${{ inputs.version }}-verified
+          name: Supertool-${{ inputs.version }}-verified
           compression-level: 0
           retention-days: 7
           if-no-files-found: error
           path: |
-            out/ShiftWheel-${{ inputs.version }}-win-x64-setup.exe
-            out/ShiftWheel-${{ inputs.version }}-win-x64-setup.exe.sha256
-            out/ShiftWheel-${{ inputs.version }}-win-x64.zip
-            out/ShiftWheel-${{ inputs.version }}-win-x64.zip.sha256
-            out/ShiftWheel-${{ inputs.version }}-source.zip
-            out/ShiftWheel-${{ inputs.version }}-source.zip.sha256
-            out/ShiftWheel-${{ inputs.version }}-core-win-x64*
+            out/Supertool-${{ inputs.version }}-win-x64-setup.exe
+            out/Supertool-${{ inputs.version }}-win-x64-setup.exe.sha256
+            out/Supertool-${{ inputs.version }}-win-x64.zip
+            out/Supertool-${{ inputs.version }}-win-x64.zip.sha256
+            out/Supertool-${{ inputs.version }}-source.zip
+            out/Supertool-${{ inputs.version }}-source.zip.sha256
+            out/Supertool-${{ inputs.version }}-core-win-x64*
             out/module-assets/*
             out/stable.txt
             out/stable-signed.txt

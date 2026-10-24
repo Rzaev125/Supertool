@@ -36,7 +36,7 @@ class ReleaseToolsTests(unittest.TestCase):
         inventory = f'SWI1\n{hashlib.sha256(data).hexdigest()} {len(data)} ffmpeg.exe\n'
         assets = self.root / 'out/module-assets'
         assets.mkdir(parents=True)
-        cab = assets / 'ShiftWheel-module-ffmpeg-0.9.0.cab'
+        cab = assets / 'Supertool-module-ffmpeg-0.9.0.cab'
         cab.write_bytes(b'pinned CAB fixture')
         catalog = dict(id='ffmpeg', version='0.9.0', url='https://github.com/Rzaev125/Supertool/releases/download/v1.0.0/' + cab.name,
                        inventory_sha256=hashlib.sha256(inventory.encode()).hexdigest(), sha256=hashlib.sha256(cab.read_bytes()).hexdigest(), bytes=cab.stat().st_size)
@@ -54,14 +54,14 @@ class ReleaseToolsTests(unittest.TestCase):
         shutil.copy2(ROOT / 'scripts/publish-release.py', scripts)
         out = self.root / 'out'
         (out / 'module-assets').mkdir(parents=True)
-        for name in ('ShiftWheel-1.0.0-win-x64-setup.exe', 'ShiftWheel-1.0.0-win-x64.zip', 'ShiftWheel-1.0.0-source.zip', 'ShiftWheel-1.0.0-core-win-x64-setup.exe', 'ShiftWheel-1.0.0-core-win-x64.zip', 'module-assets/catalog.json', 'stable.txt', 'stable-signed.txt'):
+        for name in ('Supertool-1.0.0-win-x64-setup.exe', 'Supertool-1.0.0-win-x64.zip', 'Supertool-1.0.0-source.zip', 'Supertool-1.0.0-core-win-x64-setup.exe', 'Supertool-1.0.0-core-win-x64.zip', 'module-assets/catalog.json', 'stable.txt', 'stable-signed.txt'):
             (out / name).write_text('review fixture', encoding='utf-8')
         notes = self.root / 'notes.md'
         notes.write_text('First version. Windows binaries are unsigned.', encoding='utf-8')
         result = subprocess.run([sys.executable, str(scripts / 'publish-release.py'), '--version', '1.0.0', '--title', 'First version', '--notes-file', str(notes)], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('First version', result.stdout)
-        self.assertTrue((out / 'ShiftWheel-1.0.0-source.zip.sha256').exists())
+        self.assertTrue((out / 'Supertool-1.0.0-source.zip.sha256').exists())
 
 
 if __name__ == '__main__':

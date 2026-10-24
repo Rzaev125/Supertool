@@ -14,11 +14,11 @@ AV1 GPU/AMD, HDR/10–12 бит/метаданные, физический Explo
 
 | Файл | Байт | SHA256 |
 |---|---:|---|
-| ShiftWheel-0.11.0-core-win-x64.zip | 553423 | `a9833f69777258207d68b5d3d5a2b856f0411fb9040c9fcf0a2906054c2c2605` |
-| ShiftWheel-0.11.0-core-win-x64-setup.exe | 2565414 | `b7c9dcd2fad5ced0ec2e002fd122de9eb650e28dd5beca1659e5ec6bc1e241dc` |
-| ShiftWheel-0.11.0-win-x64.zip | 630523588 | `00e4b7f7bddbce7fd0978f9f8765f9e161ac420c5af4e10d4473d44a5e0ae640` |
-| ShiftWheel-0.11.0-win-x64-setup.exe | 556713921 | `c7d8e10a836992895ce848161cd909eba985421894314d2473211e98f91e3f11` |
-| ShiftWheel-0.11.0-source.zip | 562740 | `acbc0ce896a0ea2049e3372fadedbd71e3060304e1d6dbd3d474bb012513c4dd` |
+| Supertool-0.11.0-core-win-x64.zip | 553423 | `a9833f69777258207d68b5d3d5a2b856f0411fb9040c9fcf0a2906054c2c2605` |
+| Supertool-0.11.0-core-win-x64-setup.exe | 2565414 | `b7c9dcd2fad5ced0ec2e002fd122de9eb650e28dd5beca1659e5ec6bc1e241dc` |
+| Supertool-0.11.0-win-x64.zip | 630523588 | `00e4b7f7bddbce7fd0978f9f8765f9e161ac420c5af4e10d4473d44a5e0ae640` |
+| Supertool-0.11.0-win-x64-setup.exe | 556713921 | `c7d8e10a836992895ce848161cd909eba985421894314d2473211e98f91e3f11` |
+| Supertool-0.11.0-source.zip | 562740 | `acbc0ce896a0ea2049e3372fadedbd71e3060304e1d6dbd3d474bb012513c4dd` |
 
 Публикация: [v0.11.0-preview](https://github.com/Rzaev125/Supertool/releases/tag/v0.11.0-preview), [draft PR #4](https://github.com/Rzaev125/Supertool/pull/4), база `codex/animation-0.10`. Серверные SHA256/size всех 10 assets совпали при загрузке; пять основных файлов независимо сверены по API. Анонимный HTTPS HEAD всех пяти: 200 и точный размер. Inno integrity обоих setup и встроенные EXE/manifest совпали с проверенными файлами. Stable в main после публикации снова проверен: 0.7.0 и прежний SHA256. Merge не выполнялся.
 

@@ -1,8 +1,8 @@
 """Exercise actual packaging entry points on tiny isolated release trees."""
 import argparse,hashlib,json,pathlib,shutil,subprocess,uuid,re,os
 ROOT=pathlib.Path(__file__).resolve().parents[1]
-parser=argparse.ArgumentParser();parser.add_argument('--exe',type=pathlib.Path,default=ROOT/'build/Release/ShiftWheel.exe');EXE=parser.parse_args().exe.resolve()
-VERSION=re.search(r'project\(ShiftWheel VERSION ([0-9.]+)',(ROOT/'CMakeLists.txt').read_text()).group(1)
+parser=argparse.ArgumentParser();parser.add_argument('--exe',type=pathlib.Path,default=ROOT/'build/Release/Supertool.exe');EXE=parser.parse_args().exe.resolve()
+VERSION=re.search(r'project\(Supertool VERSION ([0-9.]+)',(ROOT/'CMakeLists.txt').read_text()).group(1)
 WORK=pathlib.Path(os.environ.get('SHIFTWHEEL_TEST_ARTIFACT_ROOT',str(ROOT/'build')))/('package-policy-'+uuid.uuid4().hex)
 def digest(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 def run(script,*args):
@@ -13,7 +13,7 @@ def fixture(name):
  for script in ['package.ps1','stage-modules.ps1']:
   if (ROOT/'scripts'/script).exists():shutil.copyfile(ROOT/'scripts'/script,p/'scripts'/script)
  shutil.copytree(ROOT/'docs',p/'docs');shutil.copyfile(ROOT/'README.md',p/'README.md')
- shutil.copyfile(ROOT/'resources/START.txt',p/'resources/START.txt');shutil.copyfile(EXE,p/'build/Release/ShiftWheel.exe')
+ shutil.copyfile(ROOT/'resources/START.txt',p/'resources/START.txt');shutil.copyfile(EXE,p/'build/Release/Supertool.exe')
  engine=p/'tools/modules/ffmpeg/ffmpeg.exe';engine.write_bytes(b'engine fixture')
  license=p/'tools/modules/ffmpeg/LICENSE';license.write_bytes(b'fixture license')
  inv=p/'build/module-packages/ffmpeg.inventory';inv.write_text('SWI1\n'+digest(engine)+' '+str(engine.stat().st_size)+' ffmpeg.exe\n'+digest(license)+' '+str(license.stat().st_size)+' LICENSE\n',encoding='ascii',newline='\n')
@@ -30,7 +30,7 @@ for kind in ['extra','modified','valid']:
  if not ok:failures.append(kind+': packaging accepted unexpected/modified bytes' if kind!='valid' else 'valid package rejected: '+r.stderr.decode(errors='replace'))
  if kind=='valid':
   assert ok,'valid package rejected: '+(r.stdout+r.stderr).decode(errors='replace')
-  packed=p/f'out/ShiftWheel-{VERSION}-full/modules'
+  packed=p/f'out/Supertool-{VERSION}-full/modules'
   assert (packed/'ffmpeg/ffmpeg.exe').read_bytes()==b'engine fixture'
   args=['-ModuleRoot',packed,'-InventoryDirectory',p/'build/module-packages','-CatalogPath',p/'resources/module_catalog.json','-Destination',p/'build/validation-only','-PackagedSource','-ValidateOnly']
   assert run(p/'scripts/stage-modules.ps1',*args).returncode==0,'valid packaged module validation'
@@ -42,9 +42,9 @@ for kind in ['extra','modified','valid']:
 # Real installer entry point must compare metadata and requested distribution before compiling.
 for kind,requested,metadata in [('full-labelled-core','core','full'),('core-labelled-full','full','core'),('invalid','full','bogus'),('missing','full',None),('valid-core','core','core')]:
  p=WORK/kind;p.mkdir(parents=True)
- shutil.copyfile(EXE,p/'ShiftWheel.exe')
+ shutil.copyfile(EXE,p/'Supertool.exe')
  if metadata!='core':(p/'modules').mkdir()
- release=dict(version=VERSION,executable_sha256=digest(p/'ShiftWheel.exe'))
+ release=dict(version=VERSION,executable_sha256=digest(p/'Supertool.exe'))
  if metadata is not None:release['distribution']=metadata
  (p/'release.json').write_text(json.dumps(release))
  isolated=ROOT/'build/installer-tests'/(WORK.name+'-'+kind)

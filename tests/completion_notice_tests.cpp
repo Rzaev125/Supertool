@@ -83,6 +83,7 @@ int main(int argc, char** argv) {
         const auto foreground = GetForegroundWindow();
         BOOL animations = TRUE; SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &animations, 0);
         check(notice.show(first) && notice.visible(), "completed output must show a notification with an action button");
+        check(text(GetDlgItem(notice.handle(), 100)) == L"Supertool", "completion notification uses Supertool branding");
         check(GetForegroundWindow() == foreground, "notification must not steal focus");
         const auto initial = opacity(notice.handle());
         if (animations) check(initial < 255, "opening starts translucent");

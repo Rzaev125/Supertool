@@ -1,4 +1,4 @@
-# ShiftWheel Prototype Implementation Plan
+# Supertool Prototype Implementation Plan
 
 > **For agentic workers:** Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -41,7 +41,7 @@
 
 **Files:** src/image_converter.h, src/image_converter.cpp, tests/image_tests.cpp.
 
-**Interfaces:** `void convert_image(const path& input,const path& output,const path& temporary)`; errors as exceptions, COM initialized by caller. Shared worker CLI: `ShiftWheel.exe --convert INPUT OUTPUT TEMP`.
+**Interfaces:** `void convert_image(const path& input,const path& output,const path& temporary)`; errors as exceptions, COM initialized by caller. Shared worker CLI: `Supertool.exe --convert INPUT OUTPUT TEMP`.
 
 - [x] Write failing real-file tests for white alpha JPEG, PNG alpha, corrupt file, existing output and source safety using WIC-generated fixtures in a unique test directory.
 - [x] Run against a throwing stub and observe failures.

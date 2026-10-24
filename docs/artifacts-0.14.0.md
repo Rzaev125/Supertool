@@ -13,12 +13,12 @@
 
 | Файл | Байт | SHA256 |
 | --- | ---: | --- |
-| ShiftWheel-0.14.0-core-win-x64.zip | 604582 | `84ecf4b902556e88758d08770201727afe0407cad38f6587907ecddc83494aa0` |
-| ShiftWheel-0.14.0-core-win-x64-setup.exe | 2605437 | `2d898c078a0dce3fea5c3dd17737456bbc481e548ba8c4200e3ac73190d9abf9` |
-| ShiftWheel-0.14.0-win-x64.zip | 630574748 | `630d76c158e6218a48683fde805ab570c90a7aca041bd84f645b4af1ce23ecf2` |
-| ShiftWheel-0.14.0-win-x64-setup.exe | 556798947 | `1488ae078fe749a333ed516395a33ac6c8a8cf429137dfe0f28a605195249f17` |
+| Supertool-0.14.0-core-win-x64.zip | 604582 | `84ecf4b902556e88758d08770201727afe0407cad38f6587907ecddc83494aa0` |
+| Supertool-0.14.0-core-win-x64-setup.exe | 2605437 | `2d898c078a0dce3fea5c3dd17737456bbc481e548ba8c4200e3ac73190d9abf9` |
+| Supertool-0.14.0-win-x64.zip | 630574748 | `630d76c158e6218a48683fde805ab570c90a7aca041bd84f645b4af1ce23ecf2` |
+| Supertool-0.14.0-win-x64-setup.exe | 556798947 | `1488ae078fe749a333ed516395a33ac6c8a8cf429137dfe0f28a605195249f17` |
 
-Архив исходников `ShiftWheel-0.14.0-source.zip` создаётся из Git HEAD после фиксации этого отчёта;
+Архив исходников `Supertool-0.14.0-source.zip` создаётся из Git HEAD после фиксации этого отчёта;
 точный commit, SHA256 и все пять артефактов записаны в `out/artifacts-0.14.0.json`.
 Рядом с каждым артефактом есть `.sha256`; у установщиков — `.payload.json`.
 EXE и оба обычных установщика проверены `Get-AuthenticodeSignature`: **NotSigned**.

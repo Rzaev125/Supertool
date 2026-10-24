@@ -1,4 +1,4 @@
-# HEVC и AV1 в ShiftWheel 0.11
+# HEVC и AV1 в Supertool 0.11
 
 **Настройки → Конвертация → Видеокодек**:
 

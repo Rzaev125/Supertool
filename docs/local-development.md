@@ -1,4 +1,4 @@
-# Локальная разработка ShiftWheel
+# Локальная разработка Supertool
 
 Разработка ведётся в `D:\IT\Project\Supertool`. Локальные проверки не публикуют
 релизы, не изменяют публичные каналы и не устанавливают приложение.
@@ -41,7 +41,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-local.ps1 -Sui
 - `Conversions` — десять групп проверок, включая AVIF/HEIC, Office, презентации,
   PDF и OCR на русском, английском и азербайджанском.
 - `Full` — все зарегистрированные CTest-проверки. Если запущен основной экземпляр
-  ShiftWheel, `application_smoke` явно пропускается: работающий экземпляр не
+  Supertool, `application_smoke` явно пропускается: работающий экземпляр не
   закрывается ради проверки. Пропуски отражаются в отчёте. Ручная проверка жеста
   в Проводнике остаётся отдельной приёмкой.
 
@@ -78,7 +78,7 @@ python scripts/ci-bootstrap.py
 # Только проверить текущий комплект, без восстановления:
 python scripts/ci-bootstrap.py --verify-only
 # Если закреплённые CAB находятся в другой локальной папке:
-python scripts/ci-bootstrap.py --assets D:\Backups\ShiftWheel-module-assets
+python scripts/ci-bootstrap.py --assets D:\Backups\Supertool-module-assets
 ```
 
 Хеши и ограничения берутся из `resources/module_catalog.json`. CAB проверяются

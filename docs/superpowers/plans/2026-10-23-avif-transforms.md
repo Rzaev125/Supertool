@@ -4,7 +4,7 @@
 
 **Goal:** Convert single-frame SDR AVIF with container rotation, mirroring and valid clean-aperture crop into correctly displayed pixels.
 
-**Architecture:** Existing pinned avifdec 1.4.2 applies clap, irot and imir before writing PNG. ShiftWheel validates its complete diagnostic lines and uses the normalized PNG once; WIC handles color, size and output. No manual second pixel transform or new engine.
+**Architecture:** Existing pinned avifdec 1.4.2 applies clap, irot and imir before writing PNG. Supertool validates its complete diagnostic lines and uses the normalized PNG once; WIC handles color, size and output. No manual second pixel transform or new engine.
 
 **Tech Stack:** C++20 / Win32 / WIC, existing libavif 1.4.2 tools, Python/Pillow fixtures.
 

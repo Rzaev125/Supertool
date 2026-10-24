@@ -12,7 +12,7 @@ namespace shiftwheel {
 namespace fs = std::filesystem;
 namespace {
 constexpr DWORD max_config_size = 65536;
-[[noreturn]] void invalid() { throw std::runtime_error("Некорректные настройки ShiftWheel."); }
+[[noreturn]] void invalid() { throw std::runtime_error("Некорректные настройки Supertool."); }
 struct Handle {
     HANDLE value = INVALID_HANDLE_VALUE;
     ~Handle() { if (value != INVALID_HANDLE_VALUE) CloseHandle(value); }
@@ -114,7 +114,7 @@ Settings read_config(const fs::path& path, bool options_only, bool missing_allow
     if (file.value == INVALID_HANDLE_VALUE) {
         const auto error = GetLastError();
         if (missing_allowed && (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND)) return {};
-        throw std::runtime_error("Не удалось прочитать настройки ShiftWheel.");
+        throw std::runtime_error("Не удалось прочитать настройки Supertool.");
     }
     BY_HANDLE_FILE_INFORMATION info{};
     if (!GetFileInformationByHandle(file.value, &info) || (info.dwFileAttributes & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY)) || info.nFileSizeHigh || info.nFileSizeLow > max_config_size) invalid();

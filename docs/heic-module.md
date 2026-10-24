@@ -1,8 +1,8 @@
 # Portable HEIC module
 
-ShiftWheel uses official MSYS2 UCRT64 Windows x64 packages: **libheif 1.23.6-1**, **x265 4.3-1**, and **libde265 1.1.3-1**. No system codec, Microsoft Store extension or MSYS2 installation is required. The conversion worker loads the metadata API only while converting; the tray process does not load these codecs.
+Supertool uses official MSYS2 UCRT64 Windows x64 packages: **libheif 1.23.6-1**, **x265 4.3-1**, and **libde265 1.1.3-1**. No system codec, Microsoft Store extension or MSYS2 installation is required. The conversion worker loads the metadata API only while converting; the tray process does not load these codecs.
 
-Run `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-heic.ps1` to download verified packages and assemble `tools/modules/heic`. The script pins every archive and SHA256 in `scripts/heic-packages.json`; it does not use an unversioned download. `scripts/heic-runtime-files.json` is the PE import dependency closure of libheif and the three command line tools. The 34 binary files occupy 67,679,473 bytes. Build packaging copies this directory beside ShiftWheel.exe as `modules/heic`.
+Run `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-heic.ps1` to download verified packages and assemble `tools/modules/heic`. The script pins every archive and SHA256 in `scripts/heic-packages.json`; it does not use an unversioned download. `scripts/heic-runtime-files.json` is the PE import dependency closure of libheif and the three command line tools. The 34 binary files occupy 67,679,473 bytes. Build packaging copies this directory beside Supertool.exe as `modules/heic`.
 
 ## Supported behavior
 
@@ -43,4 +43,4 @@ The official ImageMagick 7.1.2-34 portable build was tested during selection, bu
 
 ## Validation
 
-`tests/heic_tests.py --exe <path-to-ShiftWheel.exe>` creates real PNG/HEIC fixtures and checks round trips, alpha, Unicode, all raster bridges, quality/resize, rotation/reflection/crop, ICC normalization, damaged input, excessive dimensions, unsupported8-bit HDR/multiframe refusal and missing-module errors. `tests/hdr_image_tests.py` independently checks supported10/12-bit PQ/HLG color, alpha and guards. Tests use Python/Pillow only to create and inspect fixtures; the app does not require Python.
+`tests/heic_tests.py --exe <path-to-Supertool.exe>` creates real PNG/HEIC fixtures and checks round trips, alpha, Unicode, all raster bridges, quality/resize, rotation/reflection/crop, ICC normalization, damaged input, excessive dimensions, unsupported8-bit HDR/multiframe refusal and missing-module errors. `tests/hdr_image_tests.py` independently checks supported10/12-bit PQ/HLG color, alpha and guards. Tests use Python/Pillow only to create and inspect fixtures; the app does not require Python.

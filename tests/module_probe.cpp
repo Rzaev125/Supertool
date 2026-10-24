@@ -13,7 +13,12 @@ int wmain(int argc,wchar_t** argv){try{
    std::cout<<spec.id<<": existing local copy enabled; no download or copy\n";continue;
   }
   UpdateTransport transport;
-  if(assets!=L"online")transport=[&](auto&,auto,std::ostream& out,auto){auto name=L"ShiftWheel-module-"+std::wstring(spec.id.begin(),spec.id.end())+L"-"+spec.version+L".cab";std::ifstream f(assets/name,std::ios::binary);if(!f)throw std::runtime_error("asset missing");out<<f.rdbuf();};
+  if(assets!=L"online")transport=[&](auto&,auto,std::ostream& out,auto){
+   const auto suffix=std::wstring(spec.id.begin(),spec.id.end())+L"-"+spec.version+L".cab";
+   auto asset=assets/(L"Supertool-module-"+suffix);
+   if(!std::filesystem::exists(asset))asset=assets/(L"ShiftWheel-module-"+suffix);
+   std::ifstream f(asset,std::ios::binary);if(!f)throw std::runtime_error("asset missing");out<<f.rdbuf();
+  };
   install_module(root,spec,{}, {},transport);if(!module_status(root,spec).installed)throw std::runtime_error("not installed");
   std::cout<<spec.id<<": verified installed\n"<<std::flush;
  }

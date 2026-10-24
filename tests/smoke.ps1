@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
-public static class ShiftWheelSmoke {
+public static class SupertoolSmoke {
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string name);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hwnd, uint msg, IntPtr w, IntPtr l);
@@ -15,10 +15,10 @@ try {
     for ($attempt = 0; $attempt -lt 50; $attempt++) {
         $process.Refresh()
         if ($process.HasExited) { throw 'Application exited before creating its tray controller.' }
-        $candidate = [ShiftWheelSmoke]::FindWindow('ShiftWheel.Controller', 'ShiftWheel')
+        $candidate = [SupertoolSmoke]::FindWindow('ShiftWheel.Controller', 'Supertool')
         [uint32]$ownerId = 0
         if ($candidate -ne [IntPtr]::Zero) {
-            [void][ShiftWheelSmoke]::GetWindowThreadProcessId($candidate, [ref]$ownerId)
+            [void][SupertoolSmoke]::GetWindowThreadProcessId($candidate, [ref]$ownerId)
             if ($ownerId -eq $process.Id) { $window = $candidate; break }
         }
         Start-Sleep -Milliseconds 100
@@ -32,7 +32,7 @@ try {
     $process.Refresh()
     $cpuMs = $process.TotalProcessorTime.TotalMilliseconds - $before
     Write-Output ('Idle sample: CPU {0:N1} ms / {1:N0} ms, working set {2:N1} MiB' -f $cpuMs, $clock.Elapsed.TotalMilliseconds, ($process.WorkingSet64 / 1MB))
-    [void][ShiftWheelSmoke]::PostMessage($window, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+    [void][SupertoolSmoke]::PostMessage($window, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
     if (-not $process.WaitForExit(5000)) { throw 'Application did not exit cleanly.' }
     if ($process.ExitCode -ne 0) { throw ('Application failed: ' + $process.ExitCode) }
     Write-Output 'PASS tray startup and clean shutdown'

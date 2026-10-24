@@ -1,7 +1,7 @@
 #include <windows.h>
 #include "resource.h"
 
-IDI_SHIFTWHEEL ICON "branding/shiftwheel.ico"
+IDI_SUPERTOOL ICON "branding/supertool.ico"
 
 VS_VERSION_INFO VERSIONINFO
  FILEVERSION 1,0,0,0
@@ -16,11 +16,11 @@ BEGIN
     BEGIN
         BLOCK "040904B0"
         BEGIN
-            VALUE "FileDescription", "ShiftWheel file converter\0"
+            VALUE "FileDescription", "Supertool file converter\0"
             VALUE "FileVersion", "1.0.0.0\0"
-            VALUE "InternalName", "ShiftWheel\0"
-            VALUE "OriginalFilename", "ShiftWheel.exe\0"
-            VALUE "ProductName", "ShiftWheel\0"
+            VALUE "InternalName", "Supertool\0"
+            VALUE "OriginalFilename", "Supertool.exe\0"
+            VALUE "ProductName", "Supertool\0"
             VALUE "ProductVersion", "1.0.0\0"
         END
     END

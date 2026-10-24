@@ -1,4 +1,4 @@
-# ShiftWheel 0.11 Implementation Plan
+# Supertool 0.11 Implementation Plan
 
 > Execute inline with superpowers:executing-plans; one final fresh-context whole-branch review. Existing source/preview publication authorization applies. Work in place on codex/video-codecs-0.11, base ee527ee; stable remains 0.7.0.
 

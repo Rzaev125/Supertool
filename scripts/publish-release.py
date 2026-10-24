@@ -15,15 +15,15 @@ if not re.fullmatch(r'\d{1,5}\.\d{1,5}\.\d{1,5}', version):
 repository = os.environ.get('GITHUB_REPOSITORY', 'Rzaev125/Supertool')
 if repository != 'Rzaev125/Supertool':
     raise SystemExit('Unexpected publication repository')
-title=args.title or 'ShiftWheel ' + version
+title=args.title or 'Supertool ' + version
 if not title or len(title)>200 or any(ord(c)<32 for c in title):
     raise SystemExit('Invalid release title')
 notes=args.notes_file.read_text(encoding='utf-8') if args.notes_file else 'See release documentation for features, validation and limitations.'
 if not notes.strip() or len(notes.encode('utf-8'))>120000:
     raise SystemExit('Invalid release notes')
-names = [f'ShiftWheel-{version}-win-x64-setup.exe', f'ShiftWheel-{version}-win-x64.zip',
-         f'ShiftWheel-{version}-source.zip']
-names += [f'ShiftWheel-{version}-core-win-x64-setup.exe', f'ShiftWheel-{version}-core-win-x64.zip']
+names = [f'Supertool-{version}-win-x64-setup.exe', f'Supertool-{version}-win-x64.zip',
+         f'Supertool-{version}-source.zip']
+names += [f'Supertool-{version}-core-win-x64-setup.exe', f'Supertool-{version}-core-win-x64.zip']
 paths = [root / 'out' / name for name in names]
 paths += sorted((root / 'out/module-assets').glob('*.cab'))
 paths += [root / 'out/module-assets/catalog.json']
@@ -47,7 +47,7 @@ token = os.environ.get('GH_TOKEN') or os.environ.get('GITHUB_TOKEN')
 if not token:
     raise SystemExit('CI authorization unavailable')
 headers = {'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json',
-           'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'ShiftWheel-release'}
+           'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'Supertool-release'}
 api = 'https://api.github.com/repos/' + repository
 def request(method, url, body=None):
     data = None if body is None else json.dumps(body).encode()

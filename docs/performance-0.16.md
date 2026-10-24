@@ -14,10 +14,10 @@ Microsoft Windows 11 Pro, build 26300; 12th Gen Intel(R) Core(TM) i7-12700K, 20 
 
 ## Воспроизведение
 
-Нужны собранные тестовые targets и Python с пакетами из `tests/requirements.txt`. Базовый EXE сохраняется перед изменением рядом с текущим EXE; модули не копируются. Сохранён ровно один `build/Release/ShiftWheel-perf-baseline.exe` для повторного сравнения. Команды из корня проекта:
+Нужны собранные тестовые targets и Python с пакетами из `tests/requirements.txt`. Базовый EXE сохраняется перед изменением рядом с текущим EXE; модули не копируются. Сохранён ровно один `build/Release/Supertool-perf-baseline.exe` для повторного сравнения. Команды из корня проекта:
 
 ```powershell
-python scripts/benchmark.py --baseline build/Release/ShiftWheel-perf-baseline.exe --iterations 3 > build/performance-comparison.log 2>&1
+python scripts/benchmark.py --baseline build/Release/Supertool-perf-baseline.exe --iterations 3 > build/performance-comparison.log 2>&1
 if ($LASTEXITCODE) { throw 'Benchmark failed; see retained fixture path in log.' }
 Copy-Item -LiteralPath build/benchmark-results.json -Destination build/performance-comparison.json -Force
 ```
@@ -30,7 +30,7 @@ Copy-Item -LiteralPath build/benchmark-results.json -Destination build/performan
 
 Свежий профиль LibreOffice создавал `cache/opencl_profile.xml` с пробами NVIDIA, Intel и native. Диагностический запуск нового профиля: 15,64 с, CPU 7,59 с, peak commit 674 МиБ; уже подготовленного диагностического профиля: 3,60 с и 267 МиБ. Схема закреплённого LibreOffice `share/registry/main.xcd` задаёт `Common/Misc/UseOpenCL=true` по умолчанию. Проба с false не создала OpenCL-профиль и снизила commit до 267 МиБ. Артефакты: `build/performance-lo-probe.json` и `build/performance-opencl-profile.xml`.
 
-В новых приватных профилях DOCX/XLSX и PPTX задан `UseOpenCL=false`. Профили предыдущих документов не используются повторно, макросы и обновление ссылок остаются ограниченными. Пользовательский профиль LibreOffice и INI ShiftWheel не меняются. Вычисления Calc выполняются без OpenCL; сложные таблицы с большим числом формул отдельно не измерялись. Аппаратное кодирование видео сохранено.
+В новых приватных профилях DOCX/XLSX и PPTX задан `UseOpenCL=false`. Профили предыдущих документов не используются повторно, макросы и обновление ссылок остаются ограниченными. Пользовательский профиль LibreOffice и INI Supertool не меняются. Вычисления Calc выполняются без OpenCL; сложные таблицы с большим числом формул отдельно не измерялись. Аппаратное кодирование видео сохранено.
 
 ## Итоговое сравнение Office
 

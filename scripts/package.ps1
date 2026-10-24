@@ -4,10 +4,10 @@ Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Utility\Microsoft
 $root=Split-Path $PSScriptRoot -Parent
 $version='1.0.0'
 if(-not $BuildDirectory){$BuildDirectory=Join-Path $root 'build'}
-$exe=Join-Path ([IO.Path]::GetFullPath($BuildDirectory)) "$Configuration\ShiftWheel.exe"
+$exe=Join-Path ([IO.Path]::GetFullPath($BuildDirectory)) "$Configuration\Supertool.exe"
 if((Get-Item -LiteralPath $exe).VersionInfo.ProductVersion -ne $version){throw 'Build the matching version first.'}
 # Fresh release tree; never remove engines or state from a portable user's folder.
-$name="ShiftWheel-$version-$Distribution"
+$name="Supertool-$version-$Distribution"
 $destination=Join-Path $root ('out\'+$name)
 if(Test-Path -LiteralPath $destination){throw 'Release tree already exists. Preserve it or choose a new release version.'}
 [void][IO.Directory]::CreateDirectory($destination)
@@ -23,11 +23,11 @@ Copy-Item -LiteralPath (Join-Path $root 'docs\release-1.0.0.md') -Destination (J
 if($Distribution -eq 'full'){
  & (Join-Path $PSScriptRoot 'stage-modules.ps1') -ModuleRoot (Join-Path $root 'tools\modules') -InventoryDirectory (Join-Path $root 'build\module-packages') -CatalogPath (Join-Path $root 'resources\module_catalog.json') -Destination (Join-Path $destination 'modules')
 }
-$release=[ordered]@{version=$version;distribution=$Distribution;executable_sha256=(Get-FileHash -LiteralPath (Join-Path $destination 'ShiftWheel.exe') -Algorithm SHA256).Hash}
+$release=[ordered]@{version=$version;distribution=$Distribution;executable_sha256=(Get-FileHash -LiteralPath (Join-Path $destination 'Supertool.exe') -Algorithm SHA256).Hash}
 [IO.File]::WriteAllText((Join-Path $destination 'release.json'),($release|ConvertTo-Json)+[Environment]::NewLine,[Text.UTF8Encoding]::new($false))
 if($StageOnly){Write-Output $destination;return}
 $suffix=if($Distribution -eq 'core'){'-core'}else{''}
-$archive=Join-Path $root "out\ShiftWheel-$version$suffix-win-x64.zip"
+$archive=Join-Path $root "out\Supertool-$version$suffix-win-x64.zip"
 & tar.exe -a -cf $archive -C (Join-Path $root 'out') $name
 if($LASTEXITCODE -ne 0){throw 'Archive creation failed.'}
 Get-Item -LiteralPath $archive | Select-Object FullName,Length

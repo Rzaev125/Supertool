@@ -18,7 +18,7 @@ parent = Path.cwd() / 'test-output'
 parent.mkdir(exist_ok=True)
 root = Path(tempfile.mkdtemp(prefix='office-policy-', dir=parent))
 try:
-    app = root / 'ShiftWheel.exe'
+    app = root / 'Supertool.exe'
     shutil.copy2(args.exe, app)
     engine = root / 'modules/libreoffice/program/soffice.com'
     engine.parent.mkdir(parents=True)

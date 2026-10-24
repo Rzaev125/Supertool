@@ -2,7 +2,7 @@
 
 > **For agentic workers:** Use superpowers:subagent-driven-development; root owns shared integration and final verification.
 
-**Goal:** Ship native ShiftWheel 0.4.0 with HEIC import/export, PPTX presentations, and scanned PDF to TXT in Russian, English and Azerbaijani.
+**Goal:** Ship native Supertool 0.4.0 with HEIC import/export, PPTX presentations, and scanned PDF to TXT in Russian, English and Azerbaijani.
 
 **Architecture:** Keep the C++20 Win32 shell, immutable job options, sequential workers, below-normal-priority engine processes, and exclusive output publication. Add portable libheif/x265 and Tesseract with bundled eng/rus/aze models; reuse LibreOffice/PDFium for presentations.
 

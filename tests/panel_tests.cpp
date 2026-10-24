@@ -94,8 +94,9 @@ int main(int argc,char** argv) {
     };
     if (FAILED(panel.initialize(GetModuleHandleW(nullptr), Settings{}, std::move(actions)))) return 1;
     const HWND window = panel.handle();
+    check(control_text(window) == L"Supertool", "settings window uses Supertool branding");
     if(argc==2 && std::string(argv[1])=="--preview") {
-        SetWindowTextW(window,L"ShiftWheel 0.7 — проверка настроек");panel.show(true,true);
+        SetWindowTextW(window,L"Supertool 0.7 — проверка настроек");panel.show(true,true);
         MSG msg{};while(IsWindowVisible(window) && GetMessageW(&msg,nullptr,0,0)>0) {
             if(!IsDialogMessageW(window,&msg)) {TranslateMessage(&msg);DispatchMessageW(&msg);}
         }

@@ -11,7 +11,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 parser=argparse.ArgumentParser()
-parser.add_argument('--exe',type=Path,default=ROOT/'build/Release/ShiftWheel.exe')
+parser.add_argument('--exe',type=Path,default=ROOT/'build/Release/Supertool.exe')
 EXE=parser.parse_args().exe.resolve()
 SHELL = os.environ.get('SHIFTWHEEL_CLEANUP_TEST_SHELL', 'powershell')
 
@@ -43,7 +43,7 @@ with tempfile.TemporaryDirectory(prefix='installer-cleanup-test-', dir=ROOT / 'b
         if (ROOT / 'scripts' / name).exists():
             shutil.copyfile(ROOT / 'scripts' / name, root / 'scripts' / name)
     shutil.copytree(ROOT / 'installer', root / 'installer')
-    shutil.copyfile(ROOT / 'resources/branding/shiftwheel.ico', root / 'resources/branding/shiftwheel.ico')
+    shutil.copyfile(ROOT / 'resources/branding/supertool.ico', root / 'resources/branding/supertool.ico')
     for entry in json.loads((ROOT / 'scripts/installer-tools.json').read_text()):
         source = ROOT / 'tools/installer-downloads' / entry['filename']
         if source.exists():
@@ -52,15 +52,15 @@ with tempfile.TemporaryDirectory(prefix='installer-cleanup-test-', dir=ROOT / 'b
     # A verified Core payload exercises normal output copying without full modules.
     payload = root / 'payload'
     payload.mkdir()
-    shutil.copyfile(EXE, payload / 'ShiftWheel.exe')
-    version = re.search(r'project\(ShiftWheel VERSION ([0-9.]+)', (ROOT / 'CMakeLists.txt').read_text())[1]
-    metadata = dict(version=version, distribution='core', executable_sha256=hashlib.sha256((payload / 'ShiftWheel.exe').read_bytes()).hexdigest())
+    shutil.copyfile(EXE, payload / 'Supertool.exe')
+    version = re.search(r'project\(Supertool VERSION ([0-9.]+)', (ROOT / 'CMakeLists.txt').read_text())[1]
+    metadata = dict(version=version, distribution='core', executable_sha256=hashlib.sha256((payload / 'Supertool.exe').read_bytes()).hexdigest())
     (payload / 'release.json').write_text(json.dumps(metadata))
     script = root / 'scripts/build-installer.ps1'
     args = ['-Version', version, '-Distribution', 'core', '-PayloadDirectory', payload]
     first = run(script, *args)
     check_result(first, True)
-    setup = root / f'out/ShiftWheel-{version}-core-win-x64-setup.exe'
+    setup = root / f'out/Supertool-{version}-core-win-x64-setup.exe'
     assert setup.is_file() and setup.read_bytes()[:2] == b'MZ'
     assert Path(str(setup) + '.sha256').is_file()
     assert Path(str(setup) + '.payload.json').is_file()
@@ -78,7 +78,7 @@ with tempfile.TemporaryDirectory(prefix='installer-cleanup-test-', dir=ROOT / 'b
 
     full = root / 'full-payload'
     (full / 'modules/engine').mkdir(parents=True)
-    (full / 'ShiftWheel.exe').write_bytes(b'fixture, never executed')
+    (full / 'Supertool.exe').write_bytes(b'fixture, never executed')
     (full / 'modules/engine/runtime.dll').write_bytes(b'fixture runtime')
     check_result(run(script, '-Version', '0.4.0', '-PayloadDirectory', full, '-TestRoot', isolated), True)
     clean_workspaces(root)
@@ -100,7 +100,7 @@ $root = Split-Path $PSScriptRoot -Parent
 $protected = Join-Path $root 'payload'
 $rejected = $false
 try { Remove-InstallerWorkspace $root $protected } catch { $rejected = $_ -match 'non-temporary' }
-if (-not $rejected -or -not (Test-Path -LiteralPath (Join-Path $protected 'ShiftWheel.exe'))) { throw 'Payload cleanup guard failed.' }
+if (-not $rejected -or -not (Test-Path -LiteralPath (Join-Path $protected 'Supertool.exe'))) { throw 'Payload cleanup guard failed.' }
 $owned = Join-Path $root ('build\installer-build-' + ('a' * 32))
 [void][IO.Directory]::CreateDirectory($owned)
 $link = Join-Path $owned 'link'
@@ -108,7 +108,7 @@ New-Item -ItemType Junction -Path $link -Target $protected | Out-Null
 try {
     $rejected = $false
     try { Remove-InstallerWorkspace $root $owned } catch { $rejected = $_ -match 'Reparse' }
-    if (-not $rejected -or -not (Test-Path -LiteralPath (Join-Path $protected 'ShiftWheel.exe'))) { throw 'Directory-link cleanup guard failed.' }
+    if (-not $rejected -or -not (Test-Path -LiteralPath (Join-Path $protected 'Supertool.exe'))) { throw 'Directory-link cleanup guard failed.' }
 } finally { [IO.Directory]::Delete($link) }
 Remove-InstallerWorkspace $root $owned
 ''')
@@ -123,7 +123,7 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $payload = Join-Path $root 'payload'
 $version = (Get-Content -LiteralPath (Join-Path $payload 'release.json') -Raw | ConvertFrom-Json).version
-$name = 'ShiftWheel-' + $version + '-core-win-x64-setup.exe'
+$name = 'Supertool-' + $version + '-core-win-x64-setup.exe'
 foreach ($leaf in @('installer-history',($name + '.sha256'),($name + '.payload.json'))) {
     $path = Join-Path $root ('out\' + $leaf)
     $saved = Join-Path $root ('saved-' + $leaf)
@@ -147,7 +147,7 @@ foreach ($leaf in @('installer-history',($name + '.sha256'),($name + '.payload.j
     original_setup = hashlib.sha256(setup.read_bytes()).hexdigest()
 
     # Compilation fails after the payload and compiler were both unpacked.
-    (root / 'installer/ShiftWheel.iss').write_text('#error deliberate compiler failure\n')
+    (root / 'installer/Supertool.iss').write_text('#error deliberate compiler failure\n')
     check_result(run(script, *args), False, b'deliberate compiler failure')
     clean_workspaces(root)
     assert hashlib.sha256(setup.read_bytes()).hexdigest() == original_setup, 'failed build replaced previous installer'
@@ -162,7 +162,7 @@ foreach ($leaf in @('installer-history',($name + '.sha256'),($name + '.payload.j
     (root / 'tools/installer-downloads/innounp-267.zip').write_bytes(b'corrupt cached archive')
     check_result(run(script, *args), False, b'SHA256 mismatch')
     clean_workspaces(root)
-    assert (payload / 'ShiftWheel.exe').is_file()
+    assert (payload / 'Supertool.exe').is_file()
     print('PASS: staging/hash errors clean their temporary trees and preserve inputs', flush=True)
     (root / 'tools/installer-downloads/innosetup-6.7.3.exe').unlink()
     os.environ['SHIFTWHEEL_OFFLINE'] = '1'

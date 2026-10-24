@@ -27,11 +27,14 @@ def main():
         if not files or any(p.is_symlink() or any(ord(c)>127 or c in '\r\n\t"' for c in p.relative_to(source).as_posix()) for p in files): raise ValueError('Unsafe source')
         inventory='SWI1\n'+''.join(f'{sha(p)} {p.stat().st_size} {p.relative_to(source).as_posix()}\n' for p in files)
         inv=work/f'{ident}.inventory';inv.write_text(inventory,encoding='ascii',newline='\n')
-        asset=f'ShiftWheel-module-{ident}-{version}.cab';cab=out/asset
+        asset=f'Supertool-module-{ident}-{version}.cab';cab=out/asset
         fingerprint=hashlib.sha256(inventory.encode()).hexdigest()
         cache=work/f'{ident}.cache'
         if args.verify_only:
             expected=next(r for r in trusted if r['id']==ident)
+            # Published assets retain their immutable names after rebranding.
+            if not cab.exists():
+                asset=f'ShiftWheel-module-{ident}-{version}.cab';cab=out/asset
             if expected['version']!=version or expected['inventory_sha256']!=sha(inv): raise ValueError('Source inventory differs from committed pins: '+ident)
             if not cab.exists():
                 raise ValueError('Missing local CAB: '+str(cab)+'. Restore the pinned archive from your local backup; no download was attempted.')

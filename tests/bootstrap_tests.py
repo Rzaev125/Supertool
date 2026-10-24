@@ -28,7 +28,7 @@ class BootstrapTests(unittest.TestCase):
         self.assets.mkdir()
         self.data = b'pinned test engine'
         self.inventory = self.make_inventory('bin/engine.exe')
-        self.cab = self.assets / 'ShiftWheel-module-pdfium-0.9.0.cab'
+        self.cab = self.assets / 'Supertool-module-pdfium-0.9.0.cab'
         self.cab.write_bytes(b'pinned cabinet fixture')
         self.spec = dict(id='pdfium', version='0.9.0', sha256=self.sha(self.cab.read_bytes()), bytes=self.cab.stat().st_size,
                          inventory_sha256=self.sha(self.inventory), count=2, unpacked=len(self.inventory)+len(self.data), required=['bin/engine.exe'], dependency='')
@@ -54,6 +54,12 @@ class BootstrapTests(unittest.TestCase):
 
     def assert_no_stage(self):
         self.assertEqual(list((self.root / 'tools').glob('.bootstrap-*')), [])
+
+    def test_legacy_cab_is_reused_after_product_rename(self):
+        self.cab.rename(self.assets / 'ShiftWheel-module-pdfium-0.9.0.cab')
+        self.assertEqual(self.bootstrap()['restored'], ['pdfium'])
+        self.assertEqual((self.root / 'tools/modules/pdfium/bin/engine.exe').read_bytes(), self.data)
+        self.assert_no_stage()
 
     def test_restore_then_reuse_without_unpacking_or_network(self):
         self.assertEqual(self.bootstrap()['restored'], ['pdfium'])

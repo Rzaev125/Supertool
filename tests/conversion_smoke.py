@@ -53,8 +53,8 @@ for source, target, kind in [(video, 'mp4', 'video'), (audio, 'mp3', 'audio')]:
     print('PASS ' + kind + ': stream, duration, complete decode, original preserved', flush=True)
 document = work / 'document.docx'
 doc = Document()
-doc.add_paragraph('ShiftWheel local check. Hello, Baku!')
+doc.add_paragraph('Supertool local check. Hello, Baku!')
 doc.save(document)
 pages = PdfReader(convert(document, 'pdf')).pages
-assert len(pages) == 1 and 'ShiftWheel local check' in pages[0].extract_text()
+assert len(pages) == 1 and 'Supertool local check' in pages[0].extract_text()
 print('PASS document DOCX -> PDF: page count, text, original preserved', flush=True)

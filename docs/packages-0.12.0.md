@@ -1,4 +1,4 @@
-# Локальные пакеты ShiftWheel 0.12.0
+# Локальные пакеты Supertool 0.12.0
 
 Проверено 23 октября 2026 года в `D:/IT/Project/Supertool`.
 Исполняемый файл из локальной сборки коммита `2699d9a7e9e905b38e5d5c41108b3eb6b2cba23a`,
@@ -23,10 +23,10 @@ ProductVersion `0.12.0`. Исходный код приложения в это�
 
 | Файл | Размер, байт | SHA-256 |
 | --- | ---: | --- |
-| `ShiftWheel-0.12.0-core-win-x64.zip` | 564771 | `25abf2fac8c556b63e497f8105e54b31d0dc33ee6061fce11285480d33e81e10` |
-| `ShiftWheel-0.12.0-core-win-x64-setup.exe` | 2573441 | `f175aa03c9ed445b4519c18c4a725af08a9e6cdecfce48ebbf7ae79432c338e2` |
-| `ShiftWheel-0.12.0-win-x64.zip` | 630534936 | `70d12f0e6fd0a9b4df82a7bbdf514c94d49751209d77ac997ad120bb08cf149a` |
-| `ShiftWheel-0.12.0-win-x64-setup.exe` | 556758666 | `804b07e3e2bcbbe261bc5775276f634eca23e483ab9f13a9505dead908594e6e` |
+| `Supertool-0.12.0-core-win-x64.zip` | 564771 | `25abf2fac8c556b63e497f8105e54b31d0dc33ee6061fce11285480d33e81e10` |
+| `Supertool-0.12.0-core-win-x64-setup.exe` | 2573441 | `f175aa03c9ed445b4519c18c4a725af08a9e6cdecfce48ebbf7ae79432c338e2` |
+| `Supertool-0.12.0-win-x64.zip` | 630534936 | `70d12f0e6fd0a9b4df82a7bbdf514c94d49751209d77ac997ad120bb08cf149a` |
+| `Supertool-0.12.0-win-x64-setup.exe` | 556758666 | `804b07e3e2bcbbe261bc5775276f634eca23e483ab9f13a9505dead908594e6e` |
 
 ## Доказательства
 

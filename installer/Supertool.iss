@@ -8,19 +8,19 @@
   #error OutputDir is required
 #endif
 #ifndef OutputName
-  #define OutputName "ShiftWheel-" + AppVersion + "-win-x64-setup"
+  #define OutputName "Supertool-" + AppVersion + "-win-x64-setup"
 #endif
 
 [Setup]
 AppId={{00BEDB6F-6D79-4F1C-AAB6-B13F51553090}
-AppName=ShiftWheel
+AppName=Supertool
 AppVersion={#AppVersion}
-AppVerName=ShiftWheel {#AppVersion}
-AppPublisher=ShiftWheel
+AppVerName=Supertool {#AppVersion}
+AppPublisher=Supertool
 VersionInfoVersion={#AppVersion}.0
-SetupIconFile=..\resources\branding\shiftwheel.ico
+SetupIconFile=..\resources\branding\supertool.ico
 #ifndef IsolatedRoot
-DefaultDirName={localappdata}\Programs\ShiftWheel
+DefaultDirName={code:DefaultDirectory}
 #else
 DefaultDirName={#IsolatedRoot}\app
 #endif
@@ -41,8 +41,8 @@ SetupMutex=Local\ShiftWheel.Setup
 CloseApplications=no
 RestartApplications=no
 AllowCancelDuringInstall=yes
-UninstallDisplayIcon={app}\ShiftWheel.exe
-UninstallDisplayName=ShiftWheel
+UninstallDisplayIcon={app}\Supertool.exe
+UninstallDisplayName=Supertool
 OutputDir={#OutputDir}
 OutputBaseFilename={#OutputName}
 Compression=lzma2/fast
@@ -66,13 +66,15 @@ Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Icons]
-Name: "{userprograms}\ShiftWheel"; Filename: "{app}\ShiftWheel.exe"; Parameters: "--panel"; WorkingDir: "{app}"
-Name: "{userdesktop}\ShiftWheel"; Filename: "{app}\ShiftWheel.exe"; Parameters: "--panel"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{userprograms}\Supertool"; Filename: "{app}\Supertool.exe"; Parameters: "--panel"; WorkingDir: "{app}"
+Name: "{userdesktop}\Supertool"; Filename: "{app}\Supertool.exe"; Parameters: "--panel"; WorkingDir: "{app}"; Tasks: desktopicon
 #endif
 
 [Files]
 ; Payload is an immutable filtered stage; settings are never in [Files].
 Source: "{#PayloadDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Existing shortcuts and the legacy update helper must open the new product.
+Source: "{#PayloadDir}\Supertool.exe"; DestDir: "{app}"; DestName: "ShiftWheel.exe"; Flags: ignoreversion; Check: LegacyInstallation
 
 ; No [Run], [InstallDelete], or [UninstallDelete]: never kill applications,
 ; start background work, or recursively delete the user's application folder.
@@ -80,13 +82,32 @@ Source: "{#PayloadDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 function GetFileAttributes(FileName: String): LongWord;
   external 'GetFileAttributesW@kernel32.dll stdcall';
 
+function LegacyInstallation: Boolean;
+#ifndef IsolatedRoot
+var
+  Location: String;
+#endif
+begin
+  Result := False;
+#ifndef IsolatedRoot
+  if RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{00BEDB6F-6D79-4F1C-AAB6-B13F51553090}_is1', 'InstallLocation', Location) then
+    Result := CompareText(RemoveBackslashUnlessRoot(Location), ExpandConstant('{localappdata}\Programs\ShiftWheel')) = 0;
+#endif
+end;
+
 function ExpectedDirectory: String;
 begin
 #ifdef IsolatedRoot
   Result := ExpandFileName('{#IsolatedRoot}\app');
 #else
-  Result := ExpandConstant('{localappdata}\Programs\ShiftWheel');
+  if LegacyInstallation then Result := ExpandConstant('{localappdata}\Programs\ShiftWheel')
+  else Result := ExpandConstant('{localappdata}\Programs\Supertool');
 #endif
+end;
+
+function DefaultDirectory(Param: String): String;
+begin
+  Result := ExpectedDirectory;
 end;
 
 function HasReparseParent(Path: String): Boolean;
@@ -137,9 +158,9 @@ function DirectoryError(Path: String): String;
 begin
   Result := '';
   if CompareText(RemoveBackslashUnlessRoot(ExpandFileName(Path)), RemoveBackslashUnlessRoot(ExpectedDirectory)) <> 0 then
-    Result := 'ShiftWheel installs only into its dedicated per-user application folder.'
+    Result := 'Supertool installs only into its dedicated per-user application folder.'
   else if HasReparseParent(Path) or HasReparseChild(Path) then
-    Result := 'The application folder contains a directory link. Choose a regular folder before installing or uninstalling ShiftWheel.';
+    Result := 'The application folder contains a directory link. Choose a regular folder before installing or uninstalling Supertool.';
 end;
 
 function InitializeSetup: Boolean;
@@ -165,7 +186,7 @@ function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := DirectoryError(ExpandConstant('{app}'));
   if (Result = '') and CheckForMutexes('Local\ShiftWheel.Tray') then
-    Result := 'ShiftWheel is running. Finish or cancel the current conversion, then choose Exit from its tray menu and retry.';
+    Result := 'Supertool is running. Finish or cancel the current conversion, then choose Exit from its tray menu and retry.';
 end;
 
 function InitializeUninstall: Boolean;
@@ -186,8 +207,8 @@ var
 begin
 #ifndef IsolatedRoot
   if CurUninstallStep = usUninstall then
-    if RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'ShiftWheel', Command) then
-      if CompareText(Command, '"' + ExpandConstant('{app}\ShiftWheel.exe') + '" --startup') = 0 then
-        RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'ShiftWheel');
+    if RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'Supertool', Command) then
+      if CompareText(Command, '"' + ExpandConstant('{app}\Supertool.exe') + '" --startup') = 0 then
+        RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'Supertool');
 #endif
 end;

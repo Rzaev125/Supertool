@@ -1,4 +1,5 @@
 #include "app.h"
+#include "branding.h"
 #include "profiles.h"
 #include "build_mode.h"
 #include "resource.h"
@@ -53,13 +54,13 @@ public:
         std::wstring executable(32768, L'\0');
         const auto length = GetModuleFileNameW(nullptr, executable.data(), static_cast<DWORD>(executable.size()));
         if (!length || length >= executable.size()) throw std::runtime_error("Не удалось найти папку настроек.");
-        executable.resize(length); settings_path_ = std::filesystem::path(executable).parent_path() / L"ShiftWheel.ini";
+        executable.resize(length); settings_path_ = application_state_path(std::filesystem::path(executable).parent_path(), L".ini");
         try { settings_ = load_settings(settings_path_); }
         catch (const std::exception& error) { startup_notice_ = L"Настройки не загружены: " + from_utf8(error.what()); }
         if(!local_development_build&&update_signature_configured()&&settings_.update_channel==L"https://raw.githubusercontent.com/Rzaev125/Supertool/main/updates/stable.txt")settings_.update_channel=L"https://raw.githubusercontent.com/Rzaev125/Supertool/main/updates/stable-signed.txt";
-        diagnostic_ = std::make_unique<DiagnosticLog>(settings_path_.parent_path()/L"ShiftWheel.diagnostics.log");
+        diagnostic_ = std::make_unique<DiagnosticLog>(application_state_path(settings_path_.parent_path(), L".diagnostics.log"));
         diagnostic_->append("session-start");
-        queue_path_=settings_path_.parent_path()/L"ShiftWheel.queue";
+        queue_path_=application_state_path(settings_path_.parent_path(), L".queue");
         try {
             if(auto saved=load_queue(queue_path_)) {
                 const bool recovery_changed=queue_.restore(*saved);
@@ -72,9 +73,9 @@ public:
         executable_ = executable; settings_.start_with_windows = startup_enabled(executable_);
         if (update_failed_) startup_notice_ = L"Обновление не установлено. Повторите проверку через меню трея. Автоматическая повторная попытка отложена; ручная проверка доступна.";
         WNDCLASSW cls{}; cls.lpfnWndProc = window_proc; cls.hInstance = instance; cls.lpszClassName = L"ShiftWheel.Controller";
-        cls.hIcon = LoadIconW(instance, MAKEINTRESOURCEW(IDI_SHIFTWHEEL));
+        cls.hIcon = LoadIconW(instance, MAKEINTRESOURCEW(IDI_SUPERTOOL));
         if (!RegisterClassW(&cls) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) throw std::runtime_error("Не удалось создать окно управления.");
-        window_ = CreateWindowExW(WS_EX_TOOLWINDOW, cls.lpszClassName, L"ShiftWheel", WS_OVERLAPPED, 0, 0, 0, 0, nullptr, nullptr, instance, this);
+        window_ = CreateWindowExW(WS_EX_TOOLWINDOW, cls.lpszClassName, L"Supertool", WS_OVERLAPPED, 0, 0, 0, 0, nullptr, nullptr, instance, this);
         if (!window_) throw std::runtime_error("Не удалось создать окно управления.");
         wheel_.Attach(new Wheel([this] { return queue_.pending() >= 256; }, [this](std::filesystem::path input, Format format) { enqueue({input}, format); }));
         wheel_->set_batch_handler([this](std::vector<std::filesystem::path> files, Format format) { enqueue(files, format); });
@@ -85,7 +86,7 @@ public:
             });
         });
         if (FAILED(wheel_->initialize(instance))) throw std::runtime_error("Не удалось создать колесо или зарегистрировать приём файлов.");
-        update_policy_path_=settings_path_.parent_path()/L"ShiftWheel.update-state";
+        update_policy_path_=application_state_path(settings_path_.parent_path(), L".update-state");
         try{update_policy_=load_update_policy(update_policy_path_);}catch(const std::exception& e){startup_notice_=from_utf8(e.what());}
         if(update_failed_){update_policy_.failure(update_now());save_update_policy(update_policy_path_,update_policy_);}
         if(!update_policy_.check_allowed(update_now(),false))update_status_=L"Автоматическая проверка отложена. Ручная проверка доступна.";
@@ -175,10 +176,10 @@ private:
     void export_diagnostics() {
         ComPtr<IFileSaveDialog> dialog;
         if(FAILED(CoCreateInstance(CLSID_FileSaveDialog,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&dialog)))) throw std::runtime_error("Не удалось открыть выбор файла отчёта.");
-        dialog->SetTitle(L"Сохранить диагностику ShiftWheel");
+        dialog->SetTitle(L"Сохранить диагностику Supertool");
         dialog->SetOptions(FOS_FORCEFILESYSTEM|FOS_PATHMUSTEXIST|FOS_DONTADDTORECENT);
         dialog->SetDefaultExtension(L"txt");
-        const auto name=L"ShiftWheel-diagnostics-"+std::to_wstring(GetTickCount64())+L".txt";
+        const auto name=L"Supertool-diagnostics-"+std::to_wstring(GetTickCount64())+L".txt";
         dialog->SetFileName(name.c_str());
         const auto shown=dialog->Show(panel_.handle());
         if(shown == HRESULT_FROM_WIN32(ERROR_CANCELLED)) return;
@@ -214,7 +215,7 @@ private:
                 if(!persist_queue())throw std::runtime_error("Не удалось сохранить состояние. Очередь приостановлена.");
                 if(!source_unchanged(snapshot))throw std::runtime_error("Исходный файл исчез или изменился после добавления. Проверьте его и нажмите «Повторить».");
                 worker_.start(snapshot.input, snapshot.format, window_, snapshot.options, snapshot.output_directory);
-                started_ = GetTickCount64(); tooltip(L"ShiftWheel — конвертация…"); break;
+                started_ = GetTickCount64(); tooltip(L"Supertool — конвертация…"); break;
             } catch (const std::exception& error) {
                 diagnostic_->append("conversion-start-failed",snapshot.id);
                 queue_.complete(snapshot.id, JobState::Failed, {}, from_utf8(error.what()));
@@ -348,9 +349,9 @@ private:
     void add_tray() {
         NOTIFYICONDATAW icon{sizeof(icon)}; icon.hWnd = window_; icon.uID = 1;
         icon.uFlags = NIF_MESSAGE | NIF_ICON | tray_tooltip_flags; icon.uCallbackMessage = wm_tray;
-        icon.hIcon = static_cast<HICON>(LoadImageW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDI_SHIFTWHEEL),
+        icon.hIcon = static_cast<HICON>(LoadImageW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDI_SUPERTOOL),
             IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_SHARED));
-        wcscpy_s(icon.szTip, L"ShiftWheel · перетащи файл и зажми Shift");
+        wcscpy_s(icon.szTip, L"Supertool · перетащи файл и зажми Shift");
         tray_ = Shell_NotifyIconW(NIM_ADD, &icon) != FALSE;
         if (tray_) { icon.uVersion = NOTIFYICON_VERSION_4; Shell_NotifyIconW(NIM_SETVERSION, &icon); }
     }
@@ -525,7 +526,7 @@ private:
                 if(!self->available_release_.notes.empty())self->update_status_+=L"\r\n"+self->available_release_.notes;
             }else self->update_policy_.failure(update_now());
             save_update_policy(self->update_policy_path_,self->update_policy_);
-            if(self->update_manual_||!self->pending_setup_.empty())self->balloon(L"Обновления ShiftWheel",self->update_notice_,self->update_success_?NIIF_INFO:NIIF_ERROR);
+            if(self->update_manual_||!self->pending_setup_.empty())self->balloon(L"Обновления Supertool",self->update_notice_,self->update_success_?NIIF_INFO:NIIF_ERROR);
             self->refresh();return 0;
         case WM_TIMER:
             if (w == 2) { SetTimer(hwnd, 2, 24 * 60 * 60 * 1000, nullptr); self->check_updates(false); return 0; }
@@ -539,7 +540,7 @@ private:
                 if (auto job = self->queue_.active()) self->queue_.complete(job->id, result.success ? JobState::Succeeded : result.cancelled ? JobState::Cancelled : JobState::Failed, result.success ? result.output : std::filesystem::path{}, result.message,result.facts);
                 if (result.success) self->last_output_ = result.output;
                 self->notify_finished_batches();
-                self->tooltip(L"ShiftWheel · перетащи файл и зажми Shift");
+                self->tooltip(L"Supertool · перетащи файл и зажми Shift");
                 self->refresh(); PostMessageW(hwnd, wm_start_next, 0, 0);
             }
             return 0;
@@ -547,7 +548,7 @@ private:
             self->refresh();
             if(GetTickCount64()-self->tray_progress_tick_ >= 1000) {
                 const auto progress=self->worker_.progress();
-                auto text=L"ShiftWheel · "+(progress.percent >= 0 ? std::to_wstring(progress.percent)+L"% · " : std::wstring{})+progress.stage;
+                auto text=L"Supertool · "+(progress.percent >= 0 ? std::to_wstring(progress.percent)+L"% · " : std::wstring{})+progress.stage;
                 self->tooltip(text.c_str());self->tray_progress_tick_=GetTickCount64();
             }
             return 0;
@@ -607,7 +608,7 @@ int run_app(HINSTANCE instance, bool preview, bool panel, bool settings, bool st
     HANDLE mutex = CreateMutexW(nullptr, FALSE, L"Local\\ShiftWheel.Tray");
     if (!mutex) return 1;
     if (GetLastError() == ERROR_ALREADY_EXISTS) {
-        if (!startup) if (auto window = FindWindowW(L"ShiftWheel.Controller", L"ShiftWheel")) PostMessageW(window, wm_show_panel, settings ? 1 : 0, 0);
+        if (!startup) if (auto window = FindWindowW(L"ShiftWheel.Controller", nullptr)) PostMessageW(window, wm_show_panel, settings ? 1 : 0, 0);
         CloseHandle(mutex); return 0;
     }
     int result = 0;
@@ -617,7 +618,7 @@ int run_app(HINSTANCE instance, bool preview, bool panel, bool settings, bool st
         while ((status = GetMessageW(&message, nullptr, 0, 0)) > 0) { if (!app.pretranslate(message)) { TranslateMessage(&message); DispatchMessageW(&message); } }
         if (status == -1) result = 1;
     } catch (const std::exception& error) {
-        MessageBoxW(nullptr, from_utf8(error.what()).c_str(), L"ShiftWheel", MB_OK | MB_ICONERROR);
+        MessageBoxW(nullptr, from_utf8(error.what()).c_str(), L"Supertool", MB_OK | MB_ICONERROR);
         result = 1;
     }
     CloseHandle(mutex); return result;

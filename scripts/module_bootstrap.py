@@ -189,14 +189,18 @@ def bootstrap(root, assets=None, extractor=None, verify_only=False):
             return result
         if verify_only:
             raise InvalidModule('Missing or modified modules: ' + ', '.join(k for k, v in valid.items() if not v))
+        cab_paths = {}
         for spec in rows:
             if valid[spec['id']]:
                 continue
-            cab = local_path(assets / ('ShiftWheel-module-' + spec['id'] + '-' + spec['version'] + '.cab'))
+            cab = local_path(assets / ('Supertool-module-' + spec['id'] + '-' + spec['version'] + '.cab'))
+            if not cab.exists():
+                cab = local_path(assets / ('ShiftWheel-module-' + spec['id'] + '-' + spec['version'] + '.cab'))
             if not cab.is_file():
                 raise ValueError('Missing local CAB: ' + str(cab) + '. Restore the pinned CAB from your local backup; no download was attempted.')
             if cab.stat().st_size != spec['bytes'] or sha(cab) != spec['sha256']:
                 raise ValueError('CAB SHA256/size mismatch: ' + spec['id'])
+            cab_paths[spec['id']] = cab
         stage = Path(tempfile.mkdtemp(prefix='.bootstrap-', dir=tools))
         previous, incoming = stage / 'previous', stage / 'incoming'
         incoming.mkdir()
@@ -210,7 +214,7 @@ def bootstrap(root, assets=None, extractor=None, verify_only=False):
                     verify_tree(target, inventories[ident][1])
                 else:
                     target.mkdir()
-                    cab = assets / ('ShiftWheel-module-' + ident + '-' + spec['version'] + '.cab')
+                    cab = cab_paths[ident]
                     extract(spec, cab, target)
                     inv = local_path(target / '.sw-inventory')
                     if not inv.is_file() or inv.stat().st_size > 8 * 1024**2:

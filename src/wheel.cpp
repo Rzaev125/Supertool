@@ -40,7 +40,7 @@ HRESULT Wheel::initialize(HINSTANCE instance) {
     if (FAILED(hr = font(9, DWRITE_FONT_WEIGHT_SEMI_BOLD, micro_text_))) return hr;
     WNDCLASSW cls{}; cls.lpfnWndProc = window_proc; cls.hInstance = instance; cls.lpszClassName = L"ShiftWheel.Wheel"; cls.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     if (!RegisterClassW(&cls) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return HRESULT_FROM_WIN32(GetLastError());
-    window_ = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED, cls.lpszClassName, L"ShiftWheel", WS_POPUP, 0, 0, 320, 320, nullptr, nullptr, instance, this);
+    window_ = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED, cls.lpszClassName, L"Supertool", WS_POPUP, 0, 0, 320, 320, nullptr, nullptr, instance, this);
     if (!window_) return HRESULT_FROM_WIN32(GetLastError());
     hr = RegisterDragDrop(window_, this);
     registered_ = SUCCEEDED(hr);
@@ -269,7 +269,7 @@ void Wheel::draw(ID2D1RenderTarget* target, ID2D1SolidColorBrush* brush) {
     }
     brush->SetColor(D2D1::ColorF(0x10151e)); target->FillEllipse(D2D1::Ellipse(D2D1::Point2F(160, 160), 62, 62), brush);
     brush->SetColor(D2D1::ColorF(0x354251)); target->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(160, 160), 61, 61), brush);
-    text(preview_ ? L"ПРОСМОТР" : L"SHIFTWHEEL", micro_text_.Get(), D2D1::RectF(108, 128, 212, 144), 0x8ee4cb);
+    text(preview_ ? L"ПРОСМОТР" : L"SUPERTOOL", micro_text_.Get(), D2D1::RectF(108, 128, 212, 144), 0x8ee4cb);
     std::wstring name = file_.empty() ? L"Перетащи файл" : acceptable_ ? file_.filename().wstring() : L"Нет форматов";
     if (acceptable_ && files_.size() > 1) name = L"Файлов: " + std::to_wstring(files_.size());
     if (preview_) name = file_.empty() ? L"Выбери формат" : file_.filename().wstring();

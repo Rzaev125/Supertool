@@ -1,3 +1,3 @@
 #pragma once
 
-#define IDI_SHIFTWHEEL 101
+#define IDI_SUPERTOOL 101

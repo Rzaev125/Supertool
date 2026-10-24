@@ -1,4 +1,4 @@
-# ShiftWheel 0.9.0 preview
+# Supertool 0.9.0 preview
 
 [Предварительный выпуск](https://github.com/Rzaev125/Supertool/releases/tag/v0.9.0-preview), [draft PR #2](https://github.com/Rzaev125/Supertool/pull/2), база — ветка 0.8. Stable проверен на сервере: 0.7.0, main не изменён.
 
@@ -12,10 +12,10 @@
 
 | Файл | Байт | SHA-256 |
 |---|---:|---|
-| ShiftWheel-0.9.0-core-win-x64.zip | 512379 | `ca54bcc92859d39918fe676bece3117fe3169cd8f5699a3c44d50c92dde215e2` |
-| ShiftWheel-0.9.0-core-win-x64-setup.exe | 2534241 | `e70f80b9ae861ddcf37aff72a0ddd4c8010009a42dc1d358547376556100063d` |
-| ShiftWheel-0.9.0-win-x64.zip | 630440245 | `4dd88cfbd909c11af08480827420d8b9f95f8a8477df98e35f63d956828eacc6` |
-| ShiftWheel-0.9.0-win-x64-setup.exe | 556733008 | `026bc2e7d5091c825bfba5f814f1a27e485c7689b3a018054cd3ca56aa50e479` |
+| Supertool-0.9.0-core-win-x64.zip | 512379 | `ca54bcc92859d39918fe676bece3117fe3169cd8f5699a3c44d50c92dde215e2` |
+| Supertool-0.9.0-core-win-x64-setup.exe | 2534241 | `e70f80b9ae861ddcf37aff72a0ddd4c8010009a42dc1d358547376556100063d` |
+| Supertool-0.9.0-win-x64.zip | 630440245 | `4dd88cfbd909c11af08480827420d8b9f95f8a8477df98e35f63d956828eacc6` |
+| Supertool-0.9.0-win-x64-setup.exe | 556733008 | `026bc2e7d5091c825bfba5f814f1a27e485c7689b3a018054cd3ca56aa50e479` |
 
 EXE: 981504 байт, SHA-256 `791977aacc8d582d934ebfcba7a52848ae17aaec68fe20ca78fa74ab777e35ba`. Исходный ZIP — снимок `ac3b893703f860750afcfed9ac033214688734ef` (tag v0.9.0-preview), 530772 байт, SHA-256 `5e228e891f388594a0225480ef90ea5418fa8b9e2dc81b5130ca377017b3dfee`. Последующий коммит ветки фиксирует сетевую приёмку и не меняет бинарные артефакты. Пины модулей: resources/module_catalog.json; в выпуске — CAB и catalog.json с хешами.
 

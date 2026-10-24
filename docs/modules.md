@@ -48,7 +48,7 @@ Verified local FFmpeg build: 9.0.2 essentials, archive SHA-256 `4705843ccaaf5425
 
 The resident application is native C++/Win32. Modules are separate processes or DLLs loaded only by a conversion worker. No Python runtime is shipped.
 
-Layout next to ShiftWheel.exe:
+Layout next to Supertool.exe:
 
 ```
 modules/ffmpeg/ffmpeg.exe

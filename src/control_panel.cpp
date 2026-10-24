@@ -706,7 +706,7 @@ struct ControlPanel::Impl {
         }
         DWORD options = 0; dialog->GetOptions(&options);
         dialog->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_NOCHANGEDIR);
-        dialog->SetTitle(L"Папка для результатов ShiftWheel");
+        dialog->SetTitle(L"Папка для результатов Supertool");
         const auto current = text_of(setting(Output));
         Microsoft::WRL::ComPtr<IShellItem> folder;
         if (!current.empty() && SUCCEEDED(SHCreateItemFromParsingName(current.c_str(), nullptr, IID_PPV_ARGS(&folder)))) dialog->SetFolder(folder.Get());
@@ -941,9 +941,9 @@ struct ControlPanel::Impl {
     }
     void paint_window(HDC dc) const {
         RECT r{};GetClientRect(window,&r);panel_theme::fill(dc,r,palette.canvas);
-        auto icon=static_cast<HICON>(LoadImageW(instance,MAKEINTRESOURCEW(IDI_SHIFTWHEEL),IMAGE_ICON,px(36),px(36),LR_SHARED));
+        auto icon=static_cast<HICON>(LoadImageW(instance,MAKEINTRESOURCEW(IDI_SUPERTOOL),IMAGE_ICON,px(36),px(36),LR_SHARED));
         if(icon)DrawIconEx(dc,px(24),px(22),icon,px(36),px(36),0,nullptr,DI_NORMAL);
-        panel_theme::text(dc,L"ShiftWheel",RECT{px(72),px(14),px(330),px(46)},heading_font,palette.text);
+        panel_theme::text(dc,L"Supertool",RECT{px(72),px(14),px(330),px(46)},heading_font,palette.text);
         panel_theme::text(dc,L"Конвертация файлов",RECT{px(73),px(46),px(330),px(66)},font,palette.muted);
         panel_theme::fill(dc,RECT{px(24),px(80),r.right-px(24),px(81)},palette.border);
         if(settings_visible) {
@@ -1123,14 +1123,14 @@ HRESULT ControlPanel::initialize(HINSTANCE instance, const Settings& settings, P
     if (!InitCommonControlsEx(&common)) return HRESULT_FROM_WIN32(GetLastError());
     WNDCLASSEXW type{}; type.cbSize = sizeof(type); type.hInstance = instance; type.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     type.lpfnWndProc = Impl::window_proc; type.lpszClassName = panel_class;
-    type.hIcon = static_cast<HICON>(LoadImageW(instance, MAKEINTRESOURCEW(IDI_SHIFTWHEEL), IMAGE_ICON,
+    type.hIcon = static_cast<HICON>(LoadImageW(instance, MAKEINTRESOURCEW(IDI_SUPERTOOL), IMAGE_ICON,
         GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), LR_SHARED));
-    type.hIconSm = static_cast<HICON>(LoadImageW(instance, MAKEINTRESOURCEW(IDI_SHIFTWHEEL), IMAGE_ICON,
+    type.hIconSm = static_cast<HICON>(LoadImageW(instance, MAKEINTRESOURCEW(IDI_SUPERTOOL), IMAGE_ICON,
         GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_SHARED));
     if (!RegisterClassExW(&type) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return HRESULT_FROM_WIN32(GetLastError());
     type.lpfnWndProc = Impl::page_proc; type.lpszClassName = page_class;
     if (!RegisterClassExW(&type) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return HRESULT_FROM_WIN32(GetLastError());
-    impl_->window = CreateWindowExW(WS_EX_CONTROLPARENT, panel_class, L"ShiftWheel", WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
+    impl_->window = CreateWindowExW(WS_EX_CONTROLPARENT, panel_class, L"Supertool", WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
         CW_USEDEFAULT, CW_USEDEFAULT, 840, 760, nullptr, nullptr, instance, impl_.get());
     if (!impl_->window) return HRESULT_FROM_WIN32(GetLastError());
     impl_->dpi = GetDpiForWindow(impl_->window);

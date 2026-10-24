@@ -29,13 +29,13 @@ bool CompletionNotice::initialize(HINSTANCE instance, HWND owner, std::function<
     cls.lpszClassName = L"ShiftWheel.CompletionNotice"; cls.hCursor = LoadCursorW(nullptr, IDC_ARROW); cls.style = CS_DROPSHADOW;
     if (!RegisterClassW(&cls) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return false;
     window_ = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED, cls.lpszClassName,
-        L"ShiftWheel — конвертация завершена", WS_POPUP, 0, 0, card_width, card_height, owner, nullptr, instance, this);
+        L"Supertool — конвертация завершена", WS_POPUP, 0, 0, card_width, card_height, owner, nullptr, instance, this);
     if (!window_) return false;
     auto control = [&](int id, const wchar_t* type, const wchar_t* text, DWORD style) {
         return CreateWindowExW(0, type, text, WS_CHILD | WS_VISIBLE | style, 0, 0, 1, 1, window_,
             reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), instance, nullptr) != nullptr;
     };
-    if (!control(brand_id, L"STATIC", L"ShiftWheel", SS_NOPREFIX) ||
+    if (!control(brand_id, L"STATIC", L"Supertool", SS_NOPREFIX) ||
         !control(title_id, L"STATIC", L"", SS_NOPREFIX | SS_ENDELLIPSIS) ||
         !control(message_id, L"STATIC", L"", SS_NOPREFIX | SS_ENDELLIPSIS) ||
         !control(folder_caption_id, L"STATIC", L"Сохранено в папку", SS_NOPREFIX) ||
@@ -165,7 +165,7 @@ void CompletionNotice::paint(HDC dc) {
     const auto px = [this](int value) { return MulDiv(value, static_cast<int>(dpi_), 96); };
     RECT rect{}; GetClientRect(window_, &rect);
     panel_theme::box(dc, rect, palette.surface, palette.border, px(14));
-    const auto icon = LoadIconW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDI_SHIFTWHEEL));
+    const auto icon = LoadIconW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDI_SUPERTOOL));
     DrawIconEx(dc, px(20), px(16), icon, px(20), px(20), 0, nullptr, DI_NORMAL);
     const auto status_color = palette.high_contrast ? palette.text : warning_ ? RGB(244,199,141) : RGB(142,228,203);
     const auto status_background = palette.high_contrast ? palette.surface : warning_ ? RGB(59,48,32) : RGB(25,61,53);

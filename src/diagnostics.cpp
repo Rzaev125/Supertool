@@ -34,7 +34,7 @@ void DiagnosticLog::append(std::string_view event,unsigned long long id) noexcep
 }
 void DiagnosticLog::export_to(const std::filesystem::path& destination) const {
  File source{CreateFileW(file_.c_str(),GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr)};
- std::string report="ShiftWheel diagnostics (events only; no document paths or content)\r\n";
+ std::string report="Supertool diagnostics (events only; no document paths or content)\r\n";
  if(source.h!=INVALID_HANDLE_VALUE){BY_HANDLE_FILE_INFORMATION info{};if(!GetFileInformationByHandle(source.h,&info)||(info.dwFileAttributes&(FILE_ATTRIBUTE_REPARSE_POINT|FILE_ATTRIBUTE_DIRECTORY))||info.nFileSizeHigh||info.nFileSizeLow>max_bytes)throw std::runtime_error("Журнал диагностики недоступен.");
   // Only export the fixed event vocabulary produced above, not arbitrary log content.
   std::string data(info.nFileSizeLow,'\0');DWORD got=0;if(!ReadFile(source.h,data.data(),static_cast<DWORD>(data.size()),&got,nullptr))throw std::runtime_error("Не удалось прочитать журнал.");data.resize(got);

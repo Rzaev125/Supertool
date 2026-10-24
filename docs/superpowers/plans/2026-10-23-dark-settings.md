@@ -2,7 +2,7 @@
 
 > For agentic workers: use superpowers:executing-plans for inline execution.
 
-**Goal:** Refresh ShiftWheel settings with the dark interface requested by the owner.
+**Goal:** Refresh Supertool settings with the dark interface requested by the owner.
 **Architecture:** Keep the native Win32 controls and current settings/action contracts. Use a persistent owner-drawn list box for five sections, themed native form controls, a fixed save footer and a scrollable content page. No web runtime or background animation.
 **Tech stack:** C++20, Win32/GDI, ComCtl32, documented DWM title-bar API.
 **Spec:** Owner chose a dark interface; scope is the existing settings screen and the shared window chrome.
@@ -34,5 +34,5 @@ Hidden-section drafts and callbacks; long metadata/Unicode text; keyboard focus 
 - Full CTest before review fixes: **46/46 PASS, 256.66s**, build/settings16-full-tests.log. This includes real image/media/office/PDF/OCR conversions.
 - One independent read-only review found two P2 layout defects: Tasks at minimum height and a stale high-contrast scroll range after scrollbar width changes. The first was reproduced with HWND rectangles (build/settings16-review-red.log), then fixed by adapting list/detail height. Scroll range now measures again after native scrollbar visibility settles. A narrow-layout check verifies that the last OCR checkbox fits at the scroll bottom; the high-contrast width branch was checked in source, without modifying global Windows settings.
 - Final application build PASS. After the fixes: **21 native panel cases PASS**, build/settings16-panel-final.log; **9/9 related CTest checks PASS, 16.43s**, build/settings16-final-focused.log. Release version guard and actionlint PASS; git diff --check clean.
-- Final EXE: build/Release/ShiftWheel.exe, ProductVersion0.16.0. Main preview: build/settings16-general.png; narrow DPI preview: build/settings16-wheel-144.png. The offscreen helper is tests/panel_tests.cpp --render-settings OUTPUT.bmp SECTION DPI WIDTH [bottom].
+- Final EXE: build/Release/Supertool.exe, ProductVersion0.16.0. Main preview: build/settings16-general.png; narrow DPI preview: build/settings16-wheel-144.png. The offscreen helper is tests/panel_tests.cpp --render-settings OUTPUT.bmp SECTION DPI WIDTH [bottom].
 - Ready-made 0.15.x packages and updates/stable*.txt were not changed. No release was published; no new installer or Authenticode signing was performed in this design task.

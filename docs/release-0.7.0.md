@@ -1,4 +1,4 @@
-# Пакеты ShiftWheel 0.7.0 — 2026-10-23
+# Пакеты Supertool 0.7.0 — 2026-10-23
 
 Исходники сборки: `289b812dcd9c9b08faa7e867ef06523aaedda09c`.
 Сборка MSVC /W4 без предупреждений; 29/29 выбранных тестов PASS, 155.32 s.
@@ -8,10 +8,10 @@
 
 | Файл | Байты | SHA256 |
 | --- | ---: | --- |
-| ShiftWheel.exe | 766464 | `3ca5e990a0616c7b4268c949cae4394e3326093ea024ac2387274b0d78793e81` |
-| ShiftWheel-0.7.0-win-x64-setup.exe | 556047686 | `a877d7883874ff2de78a76eca716988a6d109f48b31af1efe0fa922d911ac242` |
-| ShiftWheel-0.7.0-win-x64.zip | 629284344 | `1e753962840044cba7ea53cf0057068a481cc945e8d3f04816a8db585bb2d52a` |
-| ShiftWheel-0.7.0-source.zip | 445879 | `43b970cc339ebb465b7ec644e0fa3e120b8a94bf7d606fd6e15ffa975fd982b5` |
+| Supertool.exe | 766464 | `3ca5e990a0616c7b4268c949cae4394e3326093ea024ac2387274b0d78793e81` |
+| Supertool-0.7.0-win-x64-setup.exe | 556047686 | `a877d7883874ff2de78a76eca716988a6d109f48b31af1efe0fa922d911ac242` |
+| Supertool-0.7.0-win-x64.zip | 629284344 | `1e753962840044cba7ea53cf0057068a481cc945e8d3f04816a8db585bb2d52a` |
+| Supertool-0.7.0-source.zip | 445879 | `43b970cc339ebb465b7ec644e0fa3e120b8a94bf7d606fd6e15ffa975fd982b5` |
 
 ZIP: CRC, отсутствие дубликатов, комплект HEIC/OCR и других движков,
 точные байты EXE/README/START/VERIFICATION, UTF-8 и отсутствие личных INI/журнала

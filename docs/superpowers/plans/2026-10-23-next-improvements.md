@@ -1,4 +1,4 @@
-# План улучшений ShiftWheel после 0.6.0
+# План улучшений Supertool после 0.6.0
 
 > При реализации: использовать superpowers:executing-plans и проверять каждый этап отдельно. Пользователь утвердил реализацию этапов 1–2 для 0.7; затем утвердил продолжение этапов 3–4; этапы 5–6 продолжаются отдельными preview 0.9–0.11 по последующим подтверждениям пользователя.
 
@@ -53,7 +53,7 @@
 
 ## Этап 4 — обновления и выпуск, предлагаемый выпуск 0.8
 
-Файлы: `src/updates.h/.cpp`, `src/app.cpp`, `scripts/make-update-manifest.ps1`, `scripts/build-installer.ps1`, `installer/ShiftWheel.iss`; `tests/updates_tests.cpp`, `tests/installer_lifecycle_tests.ps1`; новые сценарии публикации/CI.
+Файлы: `src/updates.h/.cpp`, `src/app.cpp`, `scripts/make-update-manifest.ps1`, `scripts/build-installer.ps1`, `installer/Supertool.iss`; `tests/updates_tests.cpp`, `tests/installer_lifecycle_tests.ps1`; новые сценарии публикации/CI.
 
 - [x] Показывать доступную версию, описание изменений и состояние загрузки в панели. Добавить «Установить сейчас» и «Позже», сохранив запрет прерывать конвертации.
 - [x] Ограничить накопление кэша обновлений и повторные попытки после неудачи; сохранять отсрочку между запусками.

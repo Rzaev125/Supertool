@@ -22,4 +22,4 @@
 - Test portability: replaced Get-FileHash with .NET SHA-256 after the clean test environment lacked the PowerShell cmdlet.
 - Delivery decisions: retain files in the empty working folder, no git metadata changes; prototype supports images only, with universal conversion roadmap preserved.
 - Final verification after test-script changes: Release CTest 6/6 pass in 3.53 seconds. Ten-second tray sample: 0.0 ms CPU over 10006 ms; 12.9 MiB working set. Binary has only system DLL dependencies.
-- Packaging: portable EXE and start guide under out/ShiftWheel; manual Explorer/DPI acceptance remains pending and is prominently documented.
+- Packaging: portable EXE and start guide under out/Supertool; manual Explorer/DPI acceptance remains pending and is prominently documented.

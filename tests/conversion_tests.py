@@ -97,7 +97,7 @@ def office_tests():
     from pypdf import PdfReader
     import xlsxwriter
     doc = root / 'Документ.docx'
-    document = Document(); document.add_heading('ShiftWheel document', 0)
+    document = Document(); document.add_heading('Supertool document', 0)
     document.add_paragraph('First document page. Привет мир.')
     document.add_page_break(); document.add_paragraph('Second document page.'); document.save(doc)
     for target in ['pdf', 'docx', 'odt', 'rtf', 'txt']:

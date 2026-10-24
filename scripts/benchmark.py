@@ -82,7 +82,7 @@ def fixtures(work, ffmpeg):
     image.save(work/'image.png')
     run([ffmpeg,'-hide_banner','-loglevel','error','-y','-f','lavfi','-i','testsrc2=size=1280x720:rate=30','-t','4','-c:v','libx264','-threads','2','-pix_fmt','yuv420p',work/'video.mp4'])
     run([ffmpeg,'-hide_banner','-loglevel','error','-y','-f','lavfi','-i','sine=frequency=440:duration=10',work/'audio.wav'])
-    document = Document(); document.add_heading('ShiftWheel benchmark',0)
+    document = Document(); document.add_heading('Supertool benchmark',0)
     document.add_paragraph('Identical source. Unicode: Привет, Bakı.'); document.save(work/'document.docx')
     with xlsxwriter.Workbook(work/'workbook.xlsx') as workbook:
         for name,value in [('First',42),('Second',73)]:
@@ -91,7 +91,7 @@ def fixtures(work, ffmpeg):
     for title in ['Slide one','Slide two']:
         slide=deck.slides.add_slide(deck.slide_layouts[5]); slide.shapes.title.text=title
     deck.save(work/'slides.pptx')
-    pdf=canvas.Canvas(str(work/'text.pdf')); pdf.drawString(72,720,'ShiftWheel deterministic text fixture'); pdf.save()
+    pdf=canvas.Canvas(str(work/'text.pdf')); pdf.drawString(72,720,'Supertool deterministic text fixture'); pdf.save()
     scan=Image.new('RGB',(1500,700),'white')
     from PIL import ImageFont
     ImageDraw.Draw(scan).text((90,200),'SHIFTWHEEL OCR BENCHMARK 12345',fill='black',font=ImageFont.truetype('C:/Windows/Fonts/arial.ttf',60))
@@ -119,7 +119,7 @@ def inspect_output(source, output, extension, ffmpeg):
             assert pcm(source)==pcm(output), 'Lossless audio samples changed'
     else:
         text=' '.join(output.read_text('utf-8').split())
-        assert ('SHIFTWHEEL OCR BENCHMARK 12345' in text.upper()) if source.name=='scan.pdf' else ('ShiftWheel deterministic text fixture' in text)
+        assert ('SHIFTWHEEL OCR BENCHMARK 12345' in text.upper()) if source.name=='scan.pdf' else ('Supertool deterministic text fixture' in text)
 
 
 def execute(work, executable, baseline, iterations):
@@ -156,7 +156,7 @@ def execute(work, executable, baseline, iterations):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--exe',type=pathlib.Path,default=ROOT/'build/Release/ShiftWheel.exe')
+    parser.add_argument('--exe',type=pathlib.Path,default=ROOT/'build/Release/Supertool.exe')
     parser.add_argument('--baseline',type=pathlib.Path,help='Optional local EXE with matching modules beside it.')
     parser.add_argument('--iterations',type=int,choices=range(1,11),default=3)
     args=parser.parse_args()

@@ -1,11 +1,11 @@
-"""Rebuild the Windows ICO from the approved transparent ShiftWheel logo."""
+"""Rebuild the Windows ICO from the approved transparent Supertool logo."""
 from pathlib import Path
 
 from PIL import Image
 
 root = Path(__file__).resolve().parents[1]
-source = root / 'resources/branding/shiftwheel-logo-v1.png'
-destination = root / 'resources/branding/shiftwheel.ico'
+source = root / 'resources/branding/supertool-logo-v1.png'
+destination = root / 'resources/branding/supertool.ico'
 sizes = [16, 20, 24, 32, 40, 48, 64, 96, 128, 256]
 with Image.open(source) as logo:
     image = logo.convert('RGBA')

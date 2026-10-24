@@ -48,7 +48,7 @@ Authenticode и подписанный workflow не запускались. П�
 ## Ручная приёмка
 
 Пользователю предложен конкретный сценарий в собственной тестовой копии:
-`build/ui-acceptance-0.14/ShiftWheel.exe`, файл `fixtures/SHIFT-TEST.png`, drag+Shift → JPG.
+`build/ui-acceptance-0.14/Supertool.exe`, файл `fixtures/SHIFT-TEST.png`, drag+Shift → JPG.
 Результат ожидается; отсутствие ответа не считается успешной проверкой.
 Доступный computer-use API не поддерживает удержание Shift между действиями,
 поэтому автоматические OLE-проверки не выдаются за реальный жест.

@@ -35,7 +35,7 @@ jobs:
             $parameters.Curve=[Security.Cryptography.ECCurve]::CreateFromFriendlyName('nistP256')
             $parameters.Q=$point
             $public.ImportParameters($parameters)
-            $data=[Text.Encoding]::UTF8.GetBytes("ShiftWheel key connection check v1`nkey_id=$($env:UPDATE_KEY_ID)`n")
+            $data=[Text.Encoding]::UTF8.GetBytes("Supertool key connection check v1`nkey_id=$($env:UPDATE_KEY_ID)`n")
             $algorithm=[Security.Cryptography.HashAlgorithmName]::SHA256
             $format=[Security.Cryptography.DSASignatureFormat]::IeeeP1363FixedFieldConcatenation
             $signature=$private.SignData($data,$algorithm,$format)

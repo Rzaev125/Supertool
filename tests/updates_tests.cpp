@@ -1,4 +1,5 @@
 #include "updates.h"
+#include <shlobj.h>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
@@ -23,26 +24,36 @@ int wmain(int argc,wchar_t** argv) { try {
  reject([]{parse_update_manifest("version=1.0.0\n");}); reject([]{parse_update_manifest(std::string(17000,'a'));});
  auto path=std::filesystem::temp_directory_path()/(L"update-hash-"+std::to_wstring(GetCurrentProcessId()));
  {std::ofstream f(path,std::ios::binary); f<<"abc";} check(file_sha256(path)==r.sha256); std::filesystem::remove(path);
- check(!installed_copy(L"C:\\portable\\ShiftWheel.exe"));
- check(!startup_enabled(std::filesystem::path(L"C:\\"+std::wstring(250,L'a')+L"\\ShiftWheel.exe")));
+ check(!installed_copy(L"C:\\portable\\Supertool.exe"));
+ check(!startup_enabled(std::filesystem::path(L"C:\\"+std::wstring(250,L'a')+L"\\Supertool.exe")));
  auto transport=[](const std::wstring&,unsigned long long limit,std::ostream& out,std::stop_token){check(limit==3);out<<"abc";};
  unsigned progress_events=0;
  std::cerr<<"download test\n"; auto downloaded=download_update(r,{},transport,[&](auto got,auto total){check(got<=total);++progress_events;}); check(progress_events>0);check(file_sha256(downloaded)==r.sha256);std::filesystem::remove(downloaded.parent_path()/L".shiftwheel-update");std::filesystem::remove(downloaded);std::filesystem::remove(downloaded.parent_path());
  auto bad=r;bad.sha256=std::wstring(64,L'0');reject([&]{download_update(bad,{},transport);});
  auto wrong=r;wrong.size=4;reject([&]{download_update(wrong,{},[](auto&,auto,std::ostream& out,auto){out<<"abc";});});
  std::stop_source stop;stop.request_stop();reject([&]{download_update(r,stop.get_token(),transport);});
- std::cerr<<"registry test\n"; HKEY isolated=nullptr;auto key=L"Software\\ShiftWheel-UpdateTests\\"+std::to_wstring(GetCurrentProcessId());
+ std::cerr<<"registry test\n"; HKEY isolated=nullptr;auto key=L"Software\\Supertool-UpdateTests\\"+std::to_wstring(GetCurrentProcessId());
  auto cr=RegCreateKeyExW(HKEY_CURRENT_USER,key.c_str(),0,nullptr,0,KEY_ALL_ACCESS,nullptr,&isolated,nullptr);std::cerr<<"create="<<cr<<"\n";check(cr==ERROR_SUCCESS);
  auto ov=RegOverridePredefKey(HKEY_CURRENT_USER,isolated);std::cerr<<"override="<<ov<<"\n";check(ov==ERROR_SUCCESS);
- auto executable=std::filesystem::path(L"C:\\Program Files\\ShiftWheel\\ShiftWheel.exe");
+ auto executable=std::filesystem::path(L"C:\\Program Files\\Supertool\\Supertool.exe");
+ const auto legacy_command=L"\""+executable.wstring()+L"\" --startup";
+ HKEY run=nullptr;check(RegCreateKeyExW(HKEY_CURRENT_USER,L"Software\\Microsoft\\Windows\\CurrentVersion\\Run",0,nullptr,0,KEY_ALL_ACCESS,nullptr,&run,nullptr)==ERROR_SUCCESS);
+ check(RegSetValueExW(run,L"ShiftWheel",0,REG_SZ,reinterpret_cast<const BYTE*>(legacy_command.c_str()),static_cast<DWORD>((legacy_command.size()+1)*sizeof(wchar_t)))==ERROR_SUCCESS);
+ check(startup_enabled(executable));
  set_startup(executable,true);std::cerr<<"enabled="<<startup_enabled(executable)<<"\n";check(startup_enabled(executable));
- set_startup(L"C:\\other\\ShiftWheel.exe",false);check(startup_enabled(executable));
+ DWORD legacy_size=0;check(RegGetValueW(run,nullptr,L"ShiftWheel",RRF_RT_REG_SZ,nullptr,nullptr,&legacy_size)==ERROR_FILE_NOT_FOUND);RegCloseKey(run);
+ set_startup(L"C:\\other\\Supertool.exe",false);check(startup_enabled(executable));
  set_startup(executable,false);std::cerr<<"disabled="<<startup_enabled(executable)<<"\n";check(!startup_enabled(executable));
+ PWSTR local_path=nullptr;check(SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData,0,nullptr,&local_path)));
+ const auto legacy_directory=std::filesystem::path(local_path)/L"Programs"/L"ShiftWheel";CoTaskMemFree(local_path);
+ const auto canonical=legacy_directory/L"Supertool.exe",alias=legacy_directory/L"ShiftWheel.exe";
+ set_startup(alias,true);check(startup_enabled(canonical));set_startup(canonical,false);check(!startup_enabled(alias));
+ set_startup(canonical,true);check(startup_enabled(alias));set_startup(alias,false);check(!startup_enabled(canonical));
  RegOverridePredefKey(HKEY_CURRENT_USER,nullptr);RegCloseKey(isolated);RegDeleteTreeW(HKEY_CURRENT_USER,key.c_str());
 
  auto root=std::filesystem::temp_directory_path()/(L"shiftwheel-handoff-"+std::to_wstring(GetCurrentProcessId()));
  std::filesystem::create_directories(root);wchar_t self[32768]{};GetModuleFileNameW(nullptr,self,32768);
- auto app=root/L"ShiftWheel.exe",setup=root/L"setup.exe";std::filesystem::copy_file(self,app);
+ auto app=root/L"Supertool.exe",setup=root/L"setup.exe";std::filesystem::copy_file(self,app);
  std::filesystem::copy_file(std::filesystem::path(self).parent_path()/L"update_installer_fixture.exe",setup);
  SetEnvironmentVariableW(L"SHIFTWHEEL_UPDATE_TEST_ROOT",root.c_str());
  auto args=L"\""+std::wstring(self)+L"\" --handoff-child \""+setup.wstring()+L"\" \""+app.wstring()+L"\"";

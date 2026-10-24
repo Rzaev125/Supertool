@@ -12,10 +12,10 @@ PDFium анонимно загружен новым клиентом через 
 
 | Артефакт | Байт | SHA256 |
 |---|---:|---|
-| ShiftWheel-0.10.0-core-win-x64.zip | 544719 | `e142d0f1774407e97a8a3353e5b37c6d16a50d60370dfce997b0c8c3988f1997` |
-| ShiftWheel-0.10.0-core-win-x64-setup.exe | 2559272 | `01876c09a88e9af79bb431798b1e2aeadd277d9678657c1b15ba235c50b257de` |
-| ShiftWheel-0.10.0-win-x64.zip | 630514884 | `c2e0400c5631a55516637c0bff986fbb3389e747c2914813a581d3b9dc353138` |
-| ShiftWheel-0.10.0-win-x64-setup.exe | 556726028 | `8846d51eaff133ac1347d26892d8e4206071b6388154b6f74bc6bf70aefa296e` |
-| ShiftWheel-0.10.0-source.zip | 546108 | `fe7006d89e2f654ba33ff80ab996206b2f7d7dd8143eb0ea9e55f338c590b420` |
+| Supertool-0.10.0-core-win-x64.zip | 544719 | `e142d0f1774407e97a8a3353e5b37c6d16a50d60370dfce997b0c8c3988f1997` |
+| Supertool-0.10.0-core-win-x64-setup.exe | 2559272 | `01876c09a88e9af79bb431798b1e2aeadd277d9678657c1b15ba235c50b257de` |
+| Supertool-0.10.0-win-x64.zip | 630514884 | `c2e0400c5631a55516637c0bff986fbb3389e747c2914813a581d3b9dc353138` |
+| Supertool-0.10.0-win-x64-setup.exe | 556726028 | `8846d51eaff133ac1347d26892d8e4206071b6388154b6f74bc6bf70aefa296e` |
+| Supertool-0.10.0-source.zip | 546108 | `fe7006d89e2f654ba33ff80ab996206b2f7d7dd8143eb0ea9e55f338c590b420` |
 
 Публикация: [v0.10.0-preview](https://github.com/Rzaev125/Supertool/releases/tag/v0.10.0-preview), [draft PR #3](https://github.com/Rzaev125/Supertool/pull/3), база `codex/modules-0.9`. Все 10 assets (пять файлов + пять SHA256) загружены с проверкой серверных digest/size. После публикации независимо сверены SHA256 и размеры пяти основных файлов через GitHub API; анонимный HTTPS HEAD всех пяти дал 200 и точный Content-Length. Stable в main повторно проверен: 0.7.0. Merge не выполнялся.

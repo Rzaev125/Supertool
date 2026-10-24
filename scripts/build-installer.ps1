@@ -8,7 +8,7 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1') -Force
 $root = [IO.Path]::GetFullPath((Split-Path $PSScriptRoot -Parent))
 . (Join-Path $PSScriptRoot 'installer-workspace.ps1')
-if (-not $PayloadDirectory) { $PayloadDirectory = Join-Path $root ('out\ShiftWheel-'+$Version+'-'+$Distribution) }
+if (-not $PayloadDirectory) { $PayloadDirectory = Join-Path $root ('out\Supertool-'+$Version+'-'+$Distribution) }
 $run = Join-Path $root ('build\installer-build-' + [Guid]::NewGuid().ToString('N'))
 $stage = Join-Path $run 'payload'
 $output = Join-Path $run 'output'
@@ -25,11 +25,11 @@ try {
     [void][IO.Directory]::CreateDirectory($output)
     $fixturePayload = $isolated -and $Distribution -eq 'full' -and -not (Test-Path -LiteralPath (Join-Path $PayloadDirectory 'release.json'))
     & (Join-Path $root 'installer\stage-payload.ps1') -PayloadDirectory $PayloadDirectory -StageDirectory $stage -Version $Version -AllowTestPayload:$fixturePayload -Distribution $Distribution
-    $name = 'ShiftWheel-' + $Version + $(if($Distribution -eq 'core'){'-core'}else{''}) + '-win-x64-setup'
+    $name = 'Supertool-' + $Version + $(if($Distribution -eq 'core'){'-core'}else{''}) + '-win-x64-setup'
     if ($isolated) { $name += '-ISOLATED-TEST' }
     $compilerArguments = @('/Qp',('/DAppVersion=' + $Version),('/DPayloadDir=' + $stage),('/DOutputDir=' + $output),('/DOutputName=' + $name))
     if ($isolated) { $compilerArguments += '/DIsolatedRoot=' + $TestRoot }
-    $compilerArguments += Join-Path $root 'installer\ShiftWheel.iss'
+    $compilerArguments += Join-Path $root 'installer\Supertool.iss'
     & (Join-Path $PSScriptRoot 'fetch-installer-tools.ps1') -UseCompiler {
         param($compiler)
         & $compiler @compilerArguments *> $compilerLog

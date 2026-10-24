@@ -2,7 +2,7 @@
 
 > **For agentic workers:** Use superpowers:subagent-driven-development. Root owns shared settings/UI and final integration; independently owned GPU and installer tasks may run in parallel.
 
-**Goal:** Deliver ShiftWheel 0.5.0 with hardware H.264 encoding and a per-user Windows installer.
+**Goal:** Deliver Supertool 0.5.0 with hardware H.264 encoding and a per-user Windows installer.
 
 **Architecture:** Preserve native C++20 Win32, sequential jobs and portable engines. Probe real encoder initialization in conversion workers, prefer available NVIDIA NVENC / Intel QSV / AMD AMF, and fall back to CPU when automatic acceleration cannot run. Package the same verified portable payload using Inno Setup, without system-wide runtimes or services.
 
@@ -32,7 +32,7 @@
 - Real NVENC and QSV encode; unavailable AMF and genuine NVENC runtime failure fall back to CPU. AMD hardware success remains unverified.
 - Full isolated installer: 19512 installed hashes verified, actual application launch and media conversion, upgrade and payload removal with user files preserved. The asynchronous uninstaller self-cleanup test was corrected and verified twice with the small fixture; details are recorded in docs/verification.md.
 - Independent source/feature review has no remaining product findings. Real-profile registration/shortcuts are reviewed statically, not installed into the user's normal application directory.
-- Native settings window inspected after launching out/ShiftWheel/ShiftWheel.exe: Auto and CPU-only choices visible, original INI unchanged. Evidence: build/release-0.5.0-ui-check.json. Updated app left running.
+- Native settings window inspected after launching out/Supertool/Supertool.exe: Auto and CPU-only choices visible, original INI unchanged. Evidence: build/release-0.5.0-ui-check.json. Updated app left running.
 - ZIP: 629233622 bytes, 21175 unique entries, full CRC/module/EXE/docs checks passed; SHA-256 `478A79D833A2935C05F606D0703A7F871DC9700801A089DDD8EDBFF7A6CE02E9`.
 - Setup: 555961261 bytes, PE version 0.5.0, unsigned; SHA-256 `43C5B857E1356850F6B5CE75D13A3765D1A89C0705F223B6BF37E76D9BEA9F41`. Sidecar digest and payload EXE match. Personal INI excluded from both distributions; prior release retained.
 

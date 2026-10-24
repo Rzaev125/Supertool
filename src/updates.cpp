@@ -32,7 +32,7 @@ constexpr auto run_key=L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 void get(const std::wstring& url,unsigned long long limit,std::ostream& output,std::stop_token stop,const UpdateProgress& progress={}){
  if(!https_url(url))fail(); URL_COMPONENTS u{sizeof(u)};u.dwHostNameLength=u.dwUrlPathLength=u.dwExtraInfoLength=static_cast<DWORD>(-1);
  if(!WinHttpCrackUrl(url.c_str(),0,0,&u))fail();std::wstring host(u.lpszHostName,u.dwHostNameLength),path(u.lpszUrlPath,u.dwUrlPathLength); if(u.dwExtraInfoLength)path.append(u.lpszExtraInfo,u.dwExtraInfoLength);
- Http session{WinHttpOpen(L"ShiftWheel/0.8",WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,nullptr,nullptr,0)};if(!session.h)fail();WinHttpSetTimeouts(session.h,5000,5000,5000,5000);
+ Http session{WinHttpOpen(L"Supertool/1.0",WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,nullptr,nullptr,0)};if(!session.h)fail();WinHttpSetTimeouts(session.h,5000,5000,5000,5000);
  Http conn{WinHttpConnect(session.h,host.c_str(),u.nPort,0)};if(!conn.h)fail();
  Http req{WinHttpOpenRequest(conn.h,L"GET",path.c_str(),nullptr,WINHTTP_NO_REFERER,WINHTTP_DEFAULT_ACCEPT_TYPES,WINHTTP_FLAG_SECURE)};if(!req.h)fail();
  DWORD policy=WINHTTP_OPTION_REDIRECT_POLICY_DISALLOW_HTTPS_TO_HTTP; if(!WinHttpSetOption(req.h,WINHTTP_OPTION_REDIRECT_POLICY,&policy,sizeof(policy)))fail();
@@ -75,20 +75,41 @@ UpdateRelease fetch_update(const std::wstring& channel,std::stop_token stop){
  return parse_update_manifest(s.str());
 }
 fs::path download_update(const UpdateRelease& r,std::stop_token stop,const UpdateTransport& transport,const UpdateProgress& progress){
- GUID id{};if(FAILED(CoCreateGuid(&id)))fail();wchar_t name[64]{};StringFromGUID2(id,name,64);auto dir=local()/L"ShiftWheel"/L"Updates"/name;
+ GUID id{};if(FAILED(CoCreateGuid(&id)))fail();wchar_t name[64]{};StringFromGUID2(id,name,64);auto dir=local()/L"Supertool"/L"Updates"/name;
  validate_local_path(dir,false);cleanup_update_cache(dir.parent_path(),{});
  if(!fs::create_directories(dir))fail();auto path=dir/L"setup.exe";
  try{save_local_state(dir/L".shiftwheel-update","ShiftWheel-update-cache-v1\n");std::ofstream f(path,std::ios::binary);if(!f)fail();if (transport) transport(r.url,r.size,f,stop); else get(r.url,r.size,f,stop,progress);f.close();if(stop.stop_requested()||fs::file_size(path)!=r.size||file_sha256(path)!=r.sha256)fail();if(progress)progress(r.size,r.size);return path;}catch(...){discard_update_download(path);throw;}
 }
 bool installed_copy(const fs::path& e){
 #ifdef SHIFTWHEEL_UPDATE_TESTING
- wchar_t root[32768]{}; if(GetEnvironmentVariableW(L"SHIFTWHEEL_UPDATE_TEST_ROOT",root,32768)) return _wcsicmp(e.c_str(),(fs::path(root)/L"ShiftWheel.exe").c_str())==0;
+ wchar_t root[32768]{}; if(GetEnvironmentVariableW(L"SHIFTWHEEL_UPDATE_TEST_ROOT",root,32768)) return _wcsicmp(e.c_str(),(fs::path(root)/L"Supertool.exe").c_str())==0;
 #endif
- return _wcsicmp(e.lexically_normal().c_str(),(local()/L"Programs"/L"ShiftWheel"/L"ShiftWheel.exe").c_str())==0;}
-bool startup_enabled(const fs::path& e){if (!e.is_absolute() || e.wstring().size()>240 || e.wstring().find(L'"')!=std::wstring::npos) return false; wchar_t buf[1024]{};DWORD size=sizeof(buf),type=0;return RegGetValueW(HKEY_CURRENT_USER,run_key,L"ShiftWheel",RRF_RT_REG_SZ,&type,buf,&size)==ERROR_SUCCESS&&command(e)==buf;}
+ const auto normalized=e.lexically_normal();const auto programs=local()/L"Programs";
+ for(const auto& candidate:{programs/L"Supertool"/L"Supertool.exe",programs/L"ShiftWheel"/L"Supertool.exe",programs/L"ShiftWheel"/L"ShiftWheel.exe"})
+  if(_wcsicmp(normalized.c_str(),candidate.c_str())==0)return true;
+ return false;}
+namespace {
+bool startup_matches(const fs::path& e,const wchar_t* name){
+ wchar_t buf[1024]{};DWORD size=sizeof(buf),type=0;
+ if(RegGetValueW(HKEY_CURRENT_USER,run_key,name,RRF_RT_REG_SZ,&type,buf,&size)!=ERROR_SUCCESS)return false;
+ if(command(e)==buf)return true;
+ // Both names launch this same installed product after an in-place upgrade.
+ // Match aliases for either registry value, never for a different directory.
+ const auto legacy_directory=local()/L"Programs"/L"ShiftWheel";
+ if(!installed_copy(e)||_wcsicmp(e.parent_path().c_str(),legacy_directory.c_str())!=0)return false;
+ return command(e.parent_path()/L"ShiftWheel.exe")==buf||command(e.parent_path()/L"Supertool.exe")==buf;
+}
+}
+bool startup_enabled(const fs::path& e){if (!e.is_absolute() || e.wstring().size()>240 || e.wstring().find(L'"')!=std::wstring::npos) return false;return startup_matches(e,L"Supertool")||startup_matches(e,L"ShiftWheel");}
 void set_startup(const fs::path& e,bool enabled){
- if(!enabled&&!startup_enabled(e))return;HKEY key=nullptr;if(RegCreateKeyExW(HKEY_CURRENT_USER,run_key,0,nullptr,0,KEY_SET_VALUE,nullptr,&key,nullptr)!=ERROR_SUCCESS)fail();
- auto value=command(e);auto result=enabled?RegSetValueExW(key,L"ShiftWheel",0,REG_SZ,reinterpret_cast<const BYTE*>(value.c_str()),static_cast<DWORD>((value.size()+1)*sizeof(wchar_t))):RegDeleteValueW(key,L"ShiftWheel");RegCloseKey(key);if(result!=ERROR_SUCCESS)fail();
+ const auto value=command(e);const bool own_current=startup_matches(e,L"Supertool"),own_legacy=startup_matches(e,L"ShiftWheel");
+ if(!enabled&&!own_current&&!own_legacy)return;
+ HKEY key=nullptr;if(RegCreateKeyExW(HKEY_CURRENT_USER,run_key,0,nullptr,0,KEY_SET_VALUE,nullptr,&key,nullptr)!=ERROR_SUCCESS)fail();
+ LONG result=ERROR_SUCCESS;
+ if(enabled)result=RegSetValueExW(key,L"Supertool",0,REG_SZ,reinterpret_cast<const BYTE*>(value.c_str()),static_cast<DWORD>((value.size()+1)*sizeof(wchar_t)));
+ else if(own_current)result=RegDeleteValueW(key,L"Supertool");
+ if(result==ERROR_SUCCESS&&own_legacy)result=RegDeleteValueW(key,L"ShiftWheel");
+ RegCloseKey(key);if(result!=ERROR_SUCCESS)fail();
 }
 void launch_update_helper(const fs::path& installer,const fs::path& executable,const std::wstring& hash){
  if(!installed_copy(executable)||file_sha256(installer)!=hash)fail();auto helper=installer.parent_path()/(L"apply-"+std::to_wstring(GetTickCount64())+L".exe");fs::copy_file(executable,helper,fs::copy_options::overwrite_existing);

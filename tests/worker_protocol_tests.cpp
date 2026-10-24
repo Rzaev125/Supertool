@@ -51,7 +51,7 @@ int wmain(int argc, wchar_t** argv) {
     fs::create_directories(destination);
     auto input = root / L"complete.png"; { std::ofstream file(input); file << "original"; }
     { std::ofstream file(destination / L"complete.jpg"); file << "existing"; }
-    WNDCLASSW window_class{}; window_class.lpfnWndProc = notify_window; window_class.hInstance = GetModuleHandleW(nullptr); window_class.lpszClassName = L"ShiftWheel.ProtocolTest";
+    WNDCLASSW window_class{}; window_class.lpfnWndProc = notify_window; window_class.hInstance = GetModuleHandleW(nullptr); window_class.lpszClassName = L"Supertool.ProtocolTest";
     RegisterClassW(&window_class);
     HWND window = CreateWindowExW(0, window_class.lpszClassName, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, window_class.hInstance, nullptr);
     SECURITY_ATTRIBUTES security{sizeof(security), nullptr, TRUE};

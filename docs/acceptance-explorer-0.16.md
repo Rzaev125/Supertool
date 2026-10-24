@@ -6,7 +6,7 @@
 
 ## Окружение и данные
 
-- Windows 11 Pro, build 26300. EXE: `build/Release/ShiftWheel.exe`.
+- Windows 11 Pro, build 26300. EXE: `build/Release/Supertool.exe`.
 - Сохранённый Windows AppliedDPI — 96 (100%); это параметр системы, физический переход между мониторами не проверялся.
 - Локальный режим включён. Настройка `auto_show_progress=0` сохранена.
 - Проводник открыт через Computer Use, тестовое изображение видно в `build/explorer-check/01-single`.

@@ -6,7 +6,7 @@
 
 int main() {
     namespace fs = std::filesystem;
-    auto log = fs::temp_directory_path() / (L"ShiftWheel-avif-info-" + std::to_wstring(GetCurrentProcessId()) + L".log");
+    auto log = fs::temp_directory_path() / (L"Supertool-avif-info-" + std::to_wstring(GetCurrentProcessId()) + L".log");
     struct Cleanup { fs::path path; ~Cleanup() { std::error_code ec; fs::remove(path, ec); } } cleanup{log};
     const std::string color = " * Color Primaries: 1\n * Transfer Char. : 13\n * ICC Profile    : Absent\n";
     auto check = [&](const std::string& block, bool accept, const char* name, const std::string& suffix = "", bool single = true) {

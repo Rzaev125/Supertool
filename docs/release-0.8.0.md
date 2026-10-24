@@ -1,4 +1,4 @@
-# Пакеты ShiftWheel 0.8.0 — 2026-10-23
+# Пакеты Supertool 0.8.0 — 2026-10-23
 
 Подготовка выпуска в ветке `codex/release-0.8`, [черновик PR#1](https://github.com/Rzaev125/Supertool/pull/1).
 Исходники пакетов: `2f840bd` (точный коммит внутри истории ветки).
@@ -11,9 +11,9 @@ Main и стабильный канал0.7 не менялись. Настоящ
 
 | Файл | Байты | SHA256 |
 | --- | ---: | --- |
-| ShiftWheel-0.8.0-win-x64-setup.exe | 556156526 | `a5682a4aa86751d4f10c5f268688ac1b8ad8eec6b78b5f62391ad467effcc22b` |
-| ShiftWheel-0.8.0-win-x64.zip | 629356920 | `d37dcadfec40bd44c871dd91618da4f3528246a2255e31de2ba95a96c993b41d` |
-| ShiftWheel-0.8.0-source.zip | 487514 | `007947e2f1af95bfe5d2cc7790030ca91264c9fcfc015453124c9996dcc47daa` |
+| Supertool-0.8.0-win-x64-setup.exe | 556156526 | `a5682a4aa86751d4f10c5f268688ac1b8ad8eec6b78b5f62391ad467effcc22b` |
+| Supertool-0.8.0-win-x64.zip | 629356920 | `d37dcadfec40bd44c871dd91618da4f3528246a2255e31de2ba95a96c993b41d` |
+| Supertool-0.8.0-source.zip | 487514 | `007947e2f1af95bfe5d2cc7790030ca91264c9fcfc015453124c9996dcc47daa` |
 
 ZIP: полный CRC, уникальность путей, модули HEIC/OCR и обязательные движки,
 точные EXE/README/START/VERIFICATION, UTF-8 проверены. Личные INI, журнал,

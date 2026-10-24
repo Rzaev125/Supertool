@@ -4,17 +4,17 @@
 
 | Файл | Байт | SHA256 |
 | --- | ---: | --- |
-| ShiftWheel-0.15.0-core-win-x64.zip | 618023 | `449d51f3e461b6609249474484349efa2c29ad56258d7c505a291e2bc8966e9c` |
-| ShiftWheel-0.15.0-core-win-x64-setup.exe | 2614671 | `d39e76005dbc3171c792664a631c5749f09067df42770eb2dd5215e8e70292f4` |
-| ShiftWheel-0.15.0-win-x64.zip | 630588187 | `1ce246ef9f44168c0f730a5ced39a798dfe766f3a210336b099eb7bddb04f812` |
-| ShiftWheel-0.15.0-win-x64-setup.exe | 556851302 | `b89fa39212455219def1419a16daeaec5fe68eeec7e5fb82c941111e3ef9958c` |
+| Supertool-0.15.0-core-win-x64.zip | 618023 | `449d51f3e461b6609249474484349efa2c29ad56258d7c505a291e2bc8966e9c` |
+| Supertool-0.15.0-core-win-x64-setup.exe | 2614671 | `d39e76005dbc3171c792664a631c5749f09067df42770eb2dd5215e8e70292f4` |
+| Supertool-0.15.0-win-x64.zip | 630588187 | `1ce246ef9f44168c0f730a5ced39a798dfe766f3a210336b099eb7bddb04f812` |
+| Supertool-0.15.0-win-x64-setup.exe | 556851302 | `b89fa39212455219def1419a16daeaec5fe68eeec7e5fb82c941111e3ef9958c` |
 
 Рядом с каждым ZIP/setup есть .sha256; у установщиков — .payload.json. Общий машинный отчёт: out/artifacts-0.15.0.json. EXE и оба обычных установщика имеют статус Authenticode NotSigned; реальные ключи не создавались и не менялись. Это локальные неподписанные пакеты.
 
 ## Проверки
 
 - Полный CTest:46/46 PASS326.91с, build/package15-full-tests.log. Граничные HEIC-сценарии также прошли отдельно:4МиБ−1/4МиБ принимаются,4МиБ+1 и2/3 EXIF items отклоняются с ожидаемой причиной; размер/байты прочитаны из реальных HEIC до проверки приложения.
-- Core40 файлов, Full19540: каждый файл внутри ZIP потоково проверен по размеру и SHA256 против payload обычного установщика. EXE совпадает с build/Release/ShiftWheel.exe, release.json содержит0.15.0 и правильную distribution; пользовательского ShiftWheel.ini нет. Лог: build/package15-zip-verification.log.
+- Core40 файлов, Full19540: каждый файл внутри ZIP потоково проверен по размеру и SHA256 против payload обычного установщика. EXE совпадает с build/Release/Supertool.exe, release.json содержит0.15.0 и правильную distribution; пользовательского Supertool.ini нет. Лог: build/package15-zip-verification.log.
 - Для обоих составов дополнительно собраны ISOLATED-TEST setup. Их payload совпадает с обычными установщиками по каждому пути, длине и SHA256. Разный порядок JSON-записей между оболочками не считается изменением содержимого.
 - В build/installer-tests/release-0.15-{core,full}: запрет при занятом mutex приложения, обязательный test-mode, отказ неверному пути, установка, хеши всех установленных файлов, повторная установка той же0.15 и удаление — PASS. INI и посторонние корневые/вложенные файлы сохранены, реальные ярлыки/регистрация приложения не изменились, uninstaller cleanup завершён.
 - Логи: build/package15-{core,full}-lifecycle.log; результаты: build/installer-tests/release-0.15-{core,full}/results.json. Нормальные setup поверх пользовательского приложения не запускались.
