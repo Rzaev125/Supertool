@@ -27,7 +27,11 @@
 
 EXE и оба установщика имеют фактический статус Authenticode `NotSigned`. Сертификат Windows Code Signing пока не подключён. Строгие требования сертификата в release workflow сохранены; выпуск подготавливается разрешённым ручным путём.
 
-Публикация пакетов, проверка удалённых SHA-256/размеров и общедоступности выполняются до переключения каналов обновления. [Страница выпуска](https://github.com/Rzaev125/Supertool/releases/tag/v1.0.0).
+Выпуск [ShiftWheel 1.0.0 — Первая версия](https://github.com/Rzaev125/Supertool/releases/tag/v1.0.0) опубликован 24 октября 2026. Состояние latest, не черновик, не prerelease. Все **26 файлов** совпали по удалённым SHA-256 и размерам; для каждого проверена общедоступность до переключения подписанного и совместимого старого каналов.
+
+Независимая проверка после публикации подтвердила точные байты обоих публичных каналов и подпись скачанного манифеста нативным verifier. Тег `v1.0.0` указывает на `ebafb9530af72193567ffd815d0c850627b76ed4`; архив исходников содержит ровно 329 файлов этой ревизии, без пользовательских настроек и приватных ключей. SHA-256 архива: `9e8b8c9551cff142239aec604594fbd8e1ed4c305e370db4aecddcb354326102`. Последующие коммиты каналов и этого отчёта не меняют зафиксированный тег или опубликованные пакеты.
+
+Временные деревья неуспешных тестовых прогонов и изолированных установщиков удалены после сохранения свидетельств. Обычная локальная сборка снова запущена из прежнего каталога; SHA-256 INI остался `7e509f07ec0cb5673c5a769559b43126e1e289e4f14462134274e7c6a1faa5a1`.
 
 ## Границы проверки
 
@@ -35,4 +39,4 @@ EXE и оба установщика имеют фактический стат�
 
 Доступность GPU зависит от оборудования и драйвера. Успешное обнаружение кодера не приравнивается к успешному кодированию. Реальные автоматические проверки включают аппаратный путь и CPU fallback. Ограничения форматов и OCR перечислены в [примечаниях к выпуску](release-1.0.0.md).
 
-Локальные свидетельства: `build/first-release-full-final-report.json`, `build/first-release-full-final-details.log`, `build/first-release-artifact-audit.json`, `build/first-release-core-lifecycle.json`, `build/first-release-full-lifecycle.json`, `build/first-release-manifest-verification.txt`, `build/first-release-signing-status.json`.
+Локальные свидетельства: `build/first-release-full-final-report.json`, `build/first-release-full-final-details.log`, `build/first-release-artifact-audit.json`, `build/first-release-core-lifecycle.json`, `build/first-release-full-lifecycle.json`, `build/first-release-manifest-verification.txt`, `build/first-release-signing-status.json`, `build/first-release-publication.log`, `build/first-release-public-verification.json`.
