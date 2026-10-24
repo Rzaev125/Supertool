@@ -20,5 +20,5 @@
 
 - [x] Align current release notes/README/START/package docs; update catalog URLs to Supertool module names at v1.0.0, stage byte-identical CAB aliases; run version/tooling guards.
 - [x] Production OFF build, Full61/61 PASS460.83s, Core/Full installers+ZIP audited45/19545files, both isolated lifecycles and installed Full media PASS, existing-key native signature PASS. [Evidence](../../verification-supertool-release-1.0.0.md).
-- [ ] Fresh read-only whole-change review; commit source, generate exact source archive/checksums and publisher preflight. Backup old public release metadata. Only then delete old release/tag, push main and new v1.0.0 tag without forcing main, upload and publish new release.
-- [ ] Verify every public asset digest/size/link and both public channels/native signature; sync channel commits, record validation, restore local app, clean only owned test workspaces.
+- [x] Fresh review: no actionable findings. Source46c5a21 committed; exact336file sourceZIP/preflight38assets PASS. Guarded oldrelease422725759/tag removal completed only after all local gates, main+newtag pushed atomically without forcing main. New release422755340 published.
+- [x] All38 remote digests/sizes and publiclinks verified; both public channels/native signature/tag/latest state PASS. Downloaded publicCoreZIP confirmed onlySupertool.exe. Channel commits fetched/fast-forwarded, localapp restored with unchangedINI; successful testworkspaces and obsolete oldapplicationpackages removed. [Final validation](../../verification-supertool-release-1.0.0.md).

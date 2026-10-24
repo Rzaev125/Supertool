@@ -21,10 +21,14 @@ EXE и оба установщика имеют фактический Authentic
 
 До удаления старого релиза/тега сохранены их публичные метаданные. Исходники фиксируются в новой ревизии, тег v1.0.0 переносится на неё по прямому распоряжению владельца; main обновляется без принудительной перезаписи. Публикация включает пять основных пакетов, каталог, двенадцать CAB, контрольные суммы и два манифеста: всего 38 файлов. Каналы переключаются только после проверки удалённых хешей/размеров и публичной доступности.
 
-Страница назначения: [Supertool 1.0.0](https://github.com/Rzaev125/Supertool/releases/tag/v1.0.0). Итоговая публичная проверка фиксируется после публикации.
+Опубликован [Supertool 1.0.0](https://github.com/Rzaev125/Supertool/releases/tag/v1.0.0), release ID `422755340`; прежний release ID `422725759` удалён. Новый тег указывает на `46c5a218847ce09f4e1761b3c2fec432deac9296`. Исходный ZIP содержит ровно 336 файлов этой ревизии, SHA-256 `ed6c28ba2159f8578de069e651c7b204a63a9f8f24e867dba3b621f650571364`.
+
+Все **38 публичных файлов** совпали по SHA-256 и размеру; каждый публичный HEAD проверен до переключения каналов. Независимая проверка подтвердила latest/non-draft/non-prerelease, ревизию тега, точные байты обоих публичных каналов и нативную подпись скачанного манифеста. Дополнительно скачан настоящий Core ZIP с GitHub: внутри только `Supertool.exe`, его хеш совпал с проверенным кандидатом. Старых установщиков и ZIP `ShiftWheel-1.0.0*` в новом релизе нет.
+
+Устаревшие локальные пакеты и распакованные деревья `out/ShiftWheel-1.0.0*` удалены после публичной проверки новых файлов. Успешные изолированные установочные рабочие папки удалены после сохранения отчётов. Дополнительно удалён проверенный старый стенд package-policy с 11 прежними EXE; итоговый поиск во всём `build` не нашёл ни одного `ShiftWheel.exe`. Рабочий локальный Supertool снова запущен, SHA-256 прежнего INI остался `7e509f07ec0cb5673c5a769559b43126e1e289e4f14462134274e7c6a1faa5a1`.
 
 ## Границы
 
 Ручные тесты пропущены по указанию владельца. Чистая Windows/VM, Windows 10, физические DPI и полная ручная приёмка Проводника не заявляются. Ограничения форматов и подписи перечислены в [примечаниях к выпуску](release-1.0.0.md).
 
-Свидетельства локально: `build/replacement-full-report.json`, `build/replacement-full-details.log`, `build/replacement-artifact-audit.json`, `build/replacement-core-lifecycle.json`, `build/replacement-full-lifecycle.json`, `build/replacement-signing-status.json`, `build/replacement-old-release-backup/`.
+Свидетельства локально: `build/replacement-full-report.json`, `build/replacement-full-details.log`, `build/replacement-artifact-audit.json`, `build/replacement-core-lifecycle.json`, `build/replacement-full-lifecycle.json`, `build/replacement-signing-status.json`, `build/replacement-old-release-backup/`, `build/replacement-publication.log`, `build/replacement-public-verification.json`.
