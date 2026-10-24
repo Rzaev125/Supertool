@@ -14,7 +14,7 @@ struct Messages { int timers = 0, paints = 0; };
 Messages pump(HWND window, DWORD milliseconds) {
     Messages events;
     const auto until = GetTickCount64() + milliseconds;
-    do {
+    const auto drain = [&] {
         MSG message{};
         while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
             if (message.hwnd == window) {
@@ -23,8 +23,13 @@ Messages pump(HWND window, DWORD milliseconds) {
             }
             TranslateMessage(&message); DispatchMessageW(&message);
         }
-        Sleep(1);
+    };
+    do {
+        drain(); Sleep(1);
     } while (GetTickCount64() < until);
+    // Sleep can overrun the deadline under load. Dispatch the due timer before
+    // observing the animation, rather than leaving the final tick queued.
+    drain();
     return events;
 }
 BYTE opacity(HWND window) {

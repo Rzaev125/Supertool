@@ -1,11 +1,11 @@
-param([string]$Version='0.16.0',[string]$Repository='Rzaev125/Supertool')
+param([string]$Version='1.0.0',[string]$Repository='Rzaev125/Supertool',[string]$Destination='')
 $ErrorActionPreference='Stop'
 Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1') -Force
 if ($Version -notmatch '^\d{1,5}\.\d{1,5}\.\d{1,5}$' -or $Repository -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { throw 'Invalid version or repository.' }
 $root=Split-Path $PSScriptRoot -Parent
 $setup=Join-Path $root ('out\ShiftWheel-'+$Version+'-win-x64-setup.exe')
 if ((Get-Item -LiteralPath $setup).VersionInfo.ProductVersion.Trim() -ne $Version) { throw 'Installer version mismatch.' }
-$target=Join-Path $root 'updates\stable.txt'
+$target=if($Destination){[IO.Path]::GetFullPath($Destination)}else{Join-Path $root 'updates\stable.txt'}
 [void][IO.Directory]::CreateDirectory((Split-Path $target -Parent))
 $lines=@(
  ('version='+$Version)

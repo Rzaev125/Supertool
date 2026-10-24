@@ -6,6 +6,8 @@ root = Path(__file__).resolve().parent.parent
 p = argparse.ArgumentParser()
 p.add_argument('--version', required=True)
 p.add_argument('--publish', action='store_true')
+p.add_argument('--title')
+p.add_argument('--notes-file', type=Path)
 args = p.parse_args()
 version = args.version
 if not re.fullmatch(r'\d{1,5}\.\d{1,5}\.\d{1,5}', version):
@@ -13,6 +15,12 @@ if not re.fullmatch(r'\d{1,5}\.\d{1,5}\.\d{1,5}', version):
 repository = os.environ.get('GITHUB_REPOSITORY', 'Rzaev125/Supertool')
 if repository != 'Rzaev125/Supertool':
     raise SystemExit('Unexpected publication repository')
+title=args.title or 'ShiftWheel ' + version
+if not title or len(title)>200 or any(ord(c)<32 for c in title):
+    raise SystemExit('Invalid release title')
+notes=args.notes_file.read_text(encoding='utf-8') if args.notes_file else 'See release documentation for features, validation and limitations.'
+if not notes.strip() or len(notes.encode('utf-8'))>120000:
+    raise SystemExit('Invalid release notes')
 names = [f'ShiftWheel-{version}-win-x64-setup.exe', f'ShiftWheel-{version}-win-x64.zip',
          f'ShiftWheel-{version}-source.zip']
 names += [f'ShiftWheel-{version}-core-win-x64-setup.exe', f'ShiftWheel-{version}-core-win-x64.zip']
@@ -30,6 +38,7 @@ if not signed.is_file() or not plain.is_file():
     raise SystemExit('Verified signed and legacy manifests required')
 paths += [signed, plain]
 if not args.publish:
+    print('Prepared release:', title)
     print('Prepared release assets:', ', '.join(path.name for path in paths))
     raise SystemExit(0)
 if os.environ.get('GITHUB_REF') != 'refs/heads/main':
@@ -52,9 +61,9 @@ releases = request('GET', api + '/releases')
 if any(r['tag_name'] == 'v' + version for r in releases):
     raise SystemExit('Release already exists; inspect it rather than overwrite')
 release = request('POST', api + '/releases', {
-    'tag_name': 'v' + version, 'target_commitish': head, 'name': 'ShiftWheel ' + version,
+    'tag_name': 'v' + version, 'target_commitish': head, 'name': title,
     'draft': True, 'prerelease': False,
-    'body': 'Durable queue/history with explicit recovery and controlled updates. See docs/verification.md and docs/signing.md for validation and activation requirements.'})
+    'body': notes})
 for path in paths:
     with path.open('rb') as f:
         digest = hashlib.file_digest(f, 'sha256').hexdigest()

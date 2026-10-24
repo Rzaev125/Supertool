@@ -1,4 +1,5 @@
 """Run real installer scripts with tiny payloads; never install or launch them."""
+import argparse
 import hashlib
 import json
 import os
@@ -9,6 +10,9 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
+parser=argparse.ArgumentParser()
+parser.add_argument('--exe',type=Path,default=ROOT/'build/Release/ShiftWheel.exe')
+EXE=parser.parse_args().exe.resolve()
 SHELL = os.environ.get('SHIFTWHEEL_CLEANUP_TEST_SHELL', 'powershell')
 
 
@@ -48,7 +52,7 @@ with tempfile.TemporaryDirectory(prefix='installer-cleanup-test-', dir=ROOT / 'b
     # A verified Core payload exercises normal output copying without full modules.
     payload = root / 'payload'
     payload.mkdir()
-    shutil.copyfile(ROOT / 'build/Release/ShiftWheel.exe', payload / 'ShiftWheel.exe')
+    shutil.copyfile(EXE, payload / 'ShiftWheel.exe')
     version = re.search(r'project\(ShiftWheel VERSION ([0-9.]+)', (ROOT / 'CMakeLists.txt').read_text())[1]
     metadata = dict(version=version, distribution='core', executable_sha256=hashlib.sha256((payload / 'ShiftWheel.exe').read_bytes()).hexdigest())
     (payload / 'release.json').write_text(json.dumps(metadata))

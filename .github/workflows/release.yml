@@ -5,7 +5,7 @@ on:
       version:
         description: Version already committed in CMake and resources
         required: true
-        default: '0.16.0'
+        default: '1.0.0'
       publish:
         description: Publish verified packages and then update channels
         type: boolean

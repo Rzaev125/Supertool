@@ -44,7 +44,8 @@ def main():
             ddf.write_text('\n'.join(lines),encoding='ascii')
             with (work/f'{ident}.log').open('w') as log: subprocess.run(['makecab.exe','/F',str(ddf)],stdout=log,stderr=subprocess.STDOUT,check=True,cwd=ROOT)
             cache.write_text(fingerprint)
-        row=dict(id=ident,name=name,version=version,url=f'https://github.com/Rzaev125/Supertool/releases/download/v{version}-preview/{asset}',sha256=sha(cab),bytes=cab.stat().st_size,unpacked=sum(p.stat().st_size for p in files)+inv.stat().st_size,count=len(files)+1,dependency=dep,required=required,inventory_sha256=sha(inv))
+        asset_url=expected['url'] if args.verify_only else f'https://github.com/Rzaev125/Supertool/releases/download/v{version}-preview/{asset}'
+        row=dict(id=ident,name=name,version=version,url=asset_url,sha256=sha(cab),bytes=cab.stat().st_size,unpacked=sum(p.stat().st_size for p in files)+inv.stat().st_size,count=len(files)+1,dependency=dep,required=required,inventory_sha256=sha(inv))
         rows.append(row)
         lit=lambda s:json.dumps(s,ensure_ascii=False)
         pins.append('{'+','.join([lit(ident),'L'+lit(name),'L'+lit(version),'L'+lit(row['url']),'L'+lit(row['sha256']),str(row['bytes'])+'ULL',str(row['unpacked'])+'ULL',str(row['count']),lit(dep),'{'+','.join(lit(p) for p in required)+'}','L'+lit(row['inventory_sha256'])])+'},')
