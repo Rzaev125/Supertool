@@ -27,6 +27,8 @@ int main(){try{
  bad=t;bad.profiles[0].name=std::wstring(65,L'x');reject([&]{validate_profiles(bad);});
  bad={};auto v=make_profile(Category::Video,{},1);v.format=Format::Webm;bad.profiles.push_back(v);reject([&]{validate_profiles(bad);});
  check(profile_consequences(p).find(L"1920")!=std::wstring::npos&&profile_consequences(p).find(L"HDR")!=std::wstring::npos,"missing consequences");
+ auto animated=p;animated.format=Format::Webp;check(profile_consequences(animated).find(L"Анимация сохраняется")!=std::wstring::npos,"WebP hint wrongly promises first-frame-only");
+ auto extract=make_profile(Category::Video,{},1);extract.format=Format::Mp3;extract.options.audio_bitrate_kbps=160;Settings vs;vs.conversion.video_max_height=720;vs.profiles={extract};vs.active_profiles[Category::Video]=extract.id;auto sound=resolve_profile(L"x.mp4",Format::Mp3,vs);check(sound.options.audio_bitrate_kbps==160&&sound.options.video_max_height==720,"video audio extraction ignored effective audio params");check(profile_consequences(extract).find(L"Извлечение аудио")!=std::wstring::npos,"extraction hint promises video scaling/GPU");
  std::ofstream(root/L"partial.ini")<<"version=1\nprofile."<<p.id<<".name=partial\n";reject([&]{load_settings(root/L"partial.ini");});
  auto input=root/L"a.png";std::ofstream(input)<<"fixture";
  JobQueue q;q.enqueue_grouped({input},Format::Jpeg,t);auto original=*q.next();

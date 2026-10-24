@@ -101,15 +101,16 @@ std::optional<QueueSnapshot> load_queue(const fs::path& path){
 }
 void JobQueue::capture_inputs(){for(auto& j:jobs_)if(j.state==JobState::Queued&&!j.input_identity){std::error_code e;auto size=fs::file_size(j.input,e);if(e)continue;auto t=fs::last_write_time(j.input,e);if(e)continue;j.input_size=size;j.input_modified=t.time_since_epoch().count();j.input_identity=true;++revision_;}}
 bool source_unchanged(const ConversionJob& j)noexcept{try{if(!j.input_identity||!supported_local_file(j.input))return false;return fs::file_size(j.input)==j.input_size&&fs::last_write_time(j.input).time_since_epoch().count()==j.input_modified;}catch(...){return false;}}
-void JobQueue::restore(const QueueSnapshot& s){
+bool JobQueue::restore(const QueueSnapshot& s){
  validate(s);JobQueue next;next.jobs_=s.jobs;next.completed_batches_=s.completed_batches;
+ bool changed=false;
  for(const auto& b:s.batches){next.batches_.emplace(b.id,b);next.next_batch_=std::max(next.next_batch_,b.id+1);}
  for(const auto& b:s.completed_batches)next.next_batch_=std::max(next.next_batch_,b.id+1);
  for(auto& j:next.jobs_){next.next_id_=std::max(next.next_id_,j.id+1);next.next_batch_=std::max(next.next_batch_,j.batch_id+1);
-  if(j.state==JobState::Running){next.record(j,JobState::Cancelled,{},L"Прервано при закрытии. Повторите вручную.");j.state=JobState::Interrupted;j.message=L"Прервано при закрытии. Повторите вручную.";}
+  if(j.state==JobState::Running){changed=true;next.record(j,JobState::Cancelled,{},L"Прервано при закрытии. Повторите вручную.");j.state=JobState::Interrupted;j.message=L"Прервано при закрытии. Повторите вручную.";}
  }
  auto terminal=next.jobs_.size()-next.pending();
  while(terminal>100){auto it=std::find_if(next.jobs_.begin(),next.jobs_.end(),[](const auto& j){return j.state!=JobState::Queued;});next.jobs_.erase(it);--terminal;}
- next.paused_=next.pending()!=0;next.revision_=revision_+1;*this=std::move(next);
+ next.paused_=next.pending()!=0;next.revision_=revision_+1;*this=std::move(next);return changed;
 }
 }

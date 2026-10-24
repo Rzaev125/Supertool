@@ -17,4 +17,5 @@ private:
 bool parse_progress(std::string_view line, JobProgress& result);
 bool parse_engine_progress(std::string_view line, double duration_seconds, int& percent);
 void report_progress(int percent, const std::wstring& stage);
+void write_worker_event(std::string_view event);
 }

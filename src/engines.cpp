@@ -2,11 +2,14 @@
 #include "module_paths.h"
 #include "file_policy.h"
 #include "progress.h"
+#include "execution.h"
 #include <cmath>
 #include <fstream>
 #include <stdexcept>
 #include <iterator>
 #include <thread>
+#include <algorithm>
+#include <cwctype>
 
 namespace shiftwheel {
 namespace fs = std::filesystem;
@@ -164,5 +167,11 @@ void run_engine(const fs::path& executable, const std::vector<std::wstring>& arg
         std::ifstream file(log, std::ios::binary); std::string details(4096, '\0'); file.read(details.data(), details.size()); details.resize(static_cast<size_t>(file.gcount()));
         throw std::runtime_error("Модуль не смог преобразовать файл. " + details);
     }
+    auto name=executable.filename().wstring();std::transform(name.begin(),name.end(),name.begin(),[](wchar_t c){return static_cast<wchar_t>(towlower(c));});
+    if(name==L"soffice.com"||name==L"soffice.exe")report_engine("libreoffice");
+    else if(name==L"ffmpeg.exe"&&std::find(arguments.begin(),arguments.end(),L"lavfi")==arguments.end())report_engine("ffmpeg");
+    else if(name==L"avifenc.exe"||name==L"avifdec.exe")report_engine("libavif");
+    else if(name==L"heif-enc.exe"||name==L"heif-dec.exe")report_engine("libheif");
+    else if(name==L"tesseract.exe")report_engine("tesseract");
 }
 }

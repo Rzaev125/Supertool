@@ -30,8 +30,10 @@ int wmain(int argc, wchar_t** argv) {
         if (std::wstring(argv[6]) != L"--options") return 2;
         auto input = fs::path(argv[2]);
         report_progress(42, L"Кодирование\nкадров\t");
+        write("SWE1\tstage\twic\nSWE1\tencoder\tlibx264\tcpu\t1\nSWE1\tbytes\t5\nSWE1\tstage\tinvented\n");
         write("SWP1\t101\tInvalid\n" + std::string(32768, 'x') + "SWP1\t90\tInjected\n");
         if (input.stem() == L"cancel") { Sleep(INFINITE); return 0; }
+        if (input.stem() == L"failed") return 7;
         auto gate = input.parent_path() / L"continue";
         for (int i = 0; i < 500 && !fs::exists(gate); ++i) Sleep(10);
         if (!fs::exists(gate)) return 3;
@@ -77,6 +79,7 @@ int wmain(int argc, wchar_t** argv) {
         check(outcome.success && outcome.output == destination / L"complete (1).jpg", "configured output directory preserves collision naming");
         std::ifstream published(outcome.output); std::string content{std::istreambuf_iterator<char>(published), {}};
         check(content == "2 640", "child receives immutable options snapshot");
+        check(outcome.facts.elapsed_ms.has_value()&&outcome.facts.output_bytes==5&&outcome.facts.backend=="cpu"&&outcome.facts.fallback&&outcome.facts.stages==std::vector<std::string>{"wic"},"worker actual facts missing");
         check(worker.progress().percent == 100 && !payload_error, "fragmented completion updates snapshot without message pointers");
         check(!fs::exists(staging), "completed options snapshot and staging removed");
         check(fs::exists(input), "original retained");
@@ -86,11 +89,12 @@ int wmain(int argc, wchar_t** argv) {
             done = false; progress_notice = false;
             worker.start(cancelled_input, Format::Jpeg, window, {}, destination);
             until([&] { return worker.progress().percent == 42; }, "restarted worker progress did not arrive");
-            if (repeat % 2 == 0) { worker.cancel(); const auto cancelled = worker.finish(); check(cancelled.cancelled && !cancelled.success, "cancel closes progress reader"); }
+            if (repeat % 2 == 0) { worker.cancel(); const auto cancelled = worker.finish(); check(cancelled.cancelled && !cancelled.success && cancelled.facts.elapsed_ms.has_value()&&!cancelled.facts.output_bytes, "cancel closes progress reader and drops output size"); }
             else worker.shutdown();
             check(!worker.busy(), "cancel and shutdown restore idle state");
         }
         DWORD after = 0; GetProcessHandleCount(GetCurrentProcess(), &after);
+        auto failed_input=root/L"failed.png";{std::ofstream f(failed_input);f<<"fixture";}worker.start(failed_input,Format::Jpeg,nullptr,{},destination);auto failure=worker.finish();check(!failure.success&&!failure.cancelled&&failure.facts.elapsed_ms.has_value()&&!failure.facts.output_bytes&&failure.facts.stages==std::vector<std::string>{"wic"},"failed worker invented output facts");
         check(after <= baseline + 1, "repeated cancel and shutdown leak no handles");
         for (const auto& entry : fs::directory_iterator(destination)) check(!entry.is_directory(), "no staging remains after cancellation");
         bool rejected = false;

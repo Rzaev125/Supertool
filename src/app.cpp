@@ -1,4 +1,5 @@
 #include "app.h"
+#include "profiles.h"
 #include "build_mode.h"
 #include "resource.h"
 #include "modules.h"
@@ -61,7 +62,9 @@ public:
         queue_path_=settings_path_.parent_path()/L"ShiftWheel.queue";
         try {
             if(auto saved=load_queue(queue_path_)) {
-                queue_.restore(*saved);queue_.take_batch_outcomes();
+                const bool recovery_changed=queue_.restore(*saved);
+                const auto recovered_outcomes=queue_.take_batch_outcomes();
+                if(!recovery_changed&&recovered_outcomes.empty())saved_revision_=queue_.revision();
                 recovery_pending_=queue_.pending()!=0;
                 for(auto it=queue_.items().rbegin();it!=queue_.items().rend();++it)if(it->state==JobState::Succeeded&&!it->output.empty()){last_output_=it->output;break;}
             }
@@ -76,7 +79,7 @@ public:
         wheel_.Attach(new Wheel([this] { return queue_.pending() >= 256; }, [this](std::filesystem::path input, Format format) { enqueue({input}, format); }));
         wheel_->set_batch_handler([this](std::vector<std::filesystem::path> files, Format format) { enqueue(files, format); });
         wheel_->set_format_provider([this](const std::filesystem::path& input) {
-            return available_formats(input, configured_formats(input, settings_), [this](std::string_view id) {
+            return available_formats(input, profile_formats(input, settings_), [this](std::string_view id) {
                 const auto found = module_status_cache_.find(std::string(id));
                 return !modules_busy_ && found != module_status_cache_.end() && found->second.installed;
             });
@@ -115,7 +118,7 @@ public:
             if (auto job = queue_.find(id); job && job->state != JobState::Queued && job->state != JobState::Running) {
                 if (!supported_local_file(job->input)) throw std::runtime_error("Исходный файл больше недоступен.");
                 const auto snapshot = *job;
-                queue_.enqueue({snapshot.input}, snapshot.format, snapshot.options, snapshot.output_directory);
+                queue_.enqueue_retry(snapshot);
                 queue_.capture_inputs();
                 refresh(); PostMessageW(window_, wm_start_next, 1, 0);
             }
@@ -188,7 +191,7 @@ private:
     void enqueue(const std::vector<std::filesystem::path>& files, Format format) {
         try {
             for (const auto& input : files) if (!supported_local_file(input)) throw std::runtime_error("Один из исходных файлов недоступен.");
-            queue_.enqueue_grouped(files, format, settings_.conversion, settings_.output_directory);
+            queue_.enqueue_grouped(files, format, settings_);
             queue_.capture_inputs();
             diagnostic_->append("conversion-queued",queue_.items().back().id);
             PostMessageW(window_, wm_start_next, 1, 0);
@@ -248,6 +251,7 @@ private:
         state.online_updates_allowed=!local_development_build;state.module_downloads_allowed=!local_development_build;
         state.recovery_pending=recovery_pending_;
         state.modules=module_rows_;state.modules_busy=modules_busy_;state.modules_allowed=!worker_.busy()&&queue_.pending()==0;
+        for(const auto&[id,status]:module_status_cache_)state.installed_modules[id]=status.installed;
         if(selected_module_<module_catalog().size()){
             auto& m=module_catalog()[selected_module_];auto total=m.bytes;
             std::wstring dep=L"нет";
@@ -272,6 +276,8 @@ private:
         auto add = [&](const ConversionJob& job) {
             const bool pending = job.state == JobState::Queued, running = job.state == JobState::Running;
             auto detail = job.input.wstring();
+            detail+=L"\r\nПрофиль: "+(job.profile_name.empty()?std::wstring(L"Общие настройки"):job.profile_name);
+            detail+=execution_detail(job.facts?&*job.facts:nullptr,job.input_size,job.input_identity);
             if (!job.message.empty()) detail += L"\r\n" + job.message;
             if (!job.output.empty()) detail += L"\r\nРезультат: " + job.output.wstring();
             if(auto batch=queue_.batch(job.batch_id))detail+=L"\r\nГруппа "+std::to_wstring(batch->id)+L": всего "+std::to_wstring(batch->total)+L", готово "+std::to_wstring(batch->succeeded)+L", ошибок "+std::to_wstring(batch->failed)+L", отменено "+std::to_wstring(batch->cancelled)+L", осталось "+std::to_wstring(batch->remaining);
@@ -524,7 +530,7 @@ private:
             if (self->worker_.busy()) {
                 auto result = self->worker_.finish();
                 self->diagnostic_->append(result.success ? "conversion-succeeded" : result.cancelled ? "conversion-cancelled" : "conversion-failed",self->queue_.active() ? self->queue_.active()->id : 0);
-                if (auto job = self->queue_.active()) self->queue_.complete(job->id, result.success ? JobState::Succeeded : result.cancelled ? JobState::Cancelled : JobState::Failed, result.success ? result.output : std::filesystem::path{}, result.message);
+                if (auto job = self->queue_.active()) self->queue_.complete(job->id, result.success ? JobState::Succeeded : result.cancelled ? JobState::Cancelled : JobState::Failed, result.success ? result.output : std::filesystem::path{}, result.message,result.facts);
                 if (result.success) self->last_output_ = result.output;
                 self->notify_finished_batches();
                 self->tooltip(L"ShiftWheel · перетащи файл и зажми Shift");

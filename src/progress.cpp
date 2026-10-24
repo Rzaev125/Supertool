@@ -68,6 +68,11 @@ void report_progress(int percent, const std::wstring& stage) {
     if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, clean.data(), static_cast<int>(clean.size()), encoded.data(), count, nullptr, nullptr) != count) return;
     const std::string event = "SWP1\t" + std::to_string(percent) + "\t" + encoded + "\n";
     if (event.size() > progress_line_limit) return;
+    write_worker_event(event);
+}
+void write_worker_event(std::string_view event) {
+    HANDLE output=GetStdHandle(STD_OUTPUT_HANDLE);
+    if(!output||output==INVALID_HANDLE_VALUE||GetFileType(output)!=FILE_TYPE_PIPE||event.size()>progress_line_limit)return;
     static std::mutex write_mutex;
     std::lock_guard lock(write_mutex);
     DWORD written = 0;

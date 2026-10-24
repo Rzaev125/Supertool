@@ -5,6 +5,7 @@ import json
 import subprocess
 import tempfile
 from pathlib import Path
+from execution_protocol import execution_event, execution_events
 
 
 def digest(path):
@@ -22,6 +23,9 @@ def events(raw):
     result = []
     for line in raw.decode('utf-8', errors='strict').splitlines():
         fields = line.split('\t')
+        if fields[0] == 'SWE1':
+            execution_event(fields)
+            continue
         assert len(fields) == 3 and fields[0] == 'SWP1', f'Unexpected child output: {line!r}'
         result.append((int(fields[1]), fields[2]))
     return result
@@ -72,6 +76,9 @@ def main():
             trace = [line.split('\t') for line in (work / 'calls.tsv').read_text('utf-8').splitlines()]
             encodes = [line[1] for line in trace if line[0] == 'encode']
             probes = [line[1] for line in trace if line[0] == 'probe']
+            actual = [fields for fields in execution_events(result.stdout) if fields[1] == 'encoder']
+            assert len(actual) == 1 and actual[0][2] == encodes[-1], 'reported encoder was not the successful final attempt'
+            assert (actual[0][4] == '1') == (len(encodes) > 1), 'runtime fallback fact differs from actual calls'
             assert digest(source) == original, 'original media changed'
             assert output.is_file() and output.stat().st_size > 0, 'converted media missing'
             assert not (work / 'media-hardware').exists(), 'owned hardware attempt was not cleaned'

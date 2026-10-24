@@ -7,6 +7,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
+from execution_protocol import execution_event
 
 
 def digest(path):
@@ -45,6 +46,9 @@ def convert(executable, source, output, temporary, extra=(), expect_success=True
             raw, exists_at_receipt = observation
             assert len(raw) <= 1024 and raw.endswith(b'\n'), 'unbounded or unterminated protocol event'
             fields = raw[:-1].decode('utf-8', errors='strict').split('\t')
+            if fields[0] == 'SWE1':
+                execution_event(fields)
+                continue
             assert len(fields) == 3 and fields[0] == 'SWP1', f'unexpected stdout: {raw!r}'
             percent = int(fields[1])
             assert -1 <= percent <= 100 and fields[2], 'invalid progress value or empty stage'

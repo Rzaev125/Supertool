@@ -1,4 +1,5 @@
 #include "image_converter.h"
+#include "execution.h"
 #include "image_exif.h"
 #include "diagnostics.h"
 #include "policy.h"
@@ -323,9 +324,11 @@ void convert_image(const fs::path& input_arg, const fs::path& output_arg, const 
             require_hr(encoder->Commit(), "Ошибка завершения файла");
             require_hr(stream->Commit(STGC_DEFAULT), "Ошибка сохранения на диск");
         }
+        report_output_size(temporary);
         if (!MoveFileExW(temporary.c_str(), output.c_str(), MOVEFILE_WRITE_THROUGH))
             throw std::runtime_error(file_error(GetLastError(),"Не удалось сохранить результат."));
         owned_temporary = false;
+        report_engine("wic");
     } catch (...) {
         if (owned_temporary) DeleteFileW(temporary.c_str());
         throw;

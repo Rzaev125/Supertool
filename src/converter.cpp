@@ -1,6 +1,7 @@
 #include "animation_converter.h"
 #include "module_paths.h"
 #include "converter.h"
+#include "execution.h"
 #include "diagnostics.h"
 #include "media_converter.h"
 #include "engines.h"
@@ -128,6 +129,7 @@ void convert_file(const fs::path& input_path, const fs::path& output_path, const
     } else if (!fs::is_regular_file(result) || (format != Format::Txt && fs::file_size(result) == 0)) throw std::runtime_error("Конвертер не создал готовый файл.");
     validate_local_path(output, false);
     report_progress(99, L"Сохранение результата");
+    report_output_size(result);
     if (!MoveFileExW(result.c_str(), output.c_str(), MOVEFILE_WRITE_THROUGH)) throw std::runtime_error(file_error(GetLastError(),"Не удалось сохранить результат."));
 }
 }

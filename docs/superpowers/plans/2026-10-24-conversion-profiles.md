@@ -36,40 +36,42 @@
 
 Interfaces: `ConversionProfile { id, name, category, format, options }`; Settings gains profiles and active_profiles. `resolve_profile(input, format, settings)` returns options/profile ID/name. `profile_formats(input, settings)` prioritizes only a currently configured sector. `validate_profiles`, `profile_consequences`, `make_profile` own policy.
 
-- [ ] Add failing native profile tests for Unicode round-trip, old INI defaults, 32/33 and names/IDs/duplicate/link limits, explicit format compatibility, inactive target, unrelated category fields and snapshot semantics.
-- [ ] Build/run to confirm missing API or contract failure; save RED log.
-- [ ] Implement profile helpers and strict optional INI serialization (all profile option fields explicit), reuse atomic save and old global option parser. Do not accept profile fields in worker option-only snapshots.
-- [ ] Run profile/options/policy tests; confirm GREEN and settings fixture integrity. Commit model/storage/resolver.
+- [x] Add failing native profile tests for Unicode round-trip, old INI defaults, 32/33 and names/IDs/duplicate/link limits, explicit format compatibility, inactive target, unrelated category fields and snapshot semantics.
+- [x] Build/run to confirm missing API or contract failure; save RED log.
+- [x] Implement profile helpers and strict optional INI serialization (all profile option fields explicit), reuse atomic save and old global option parser. Do not accept profile fields in worker option-only snapshots.
+- [x] Run profile/options/policy tests; confirm GREEN and settings fixture integrity. Commit model/storage/resolver.
 
 ### Task 2: Queue snapshots and saved facts
 
 Interfaces: `enqueue_grouped(..., const Settings&)` resolves per input and assigns immutable labels; existing options overload remains. ConversionJob gains profile ID/name and optional `ExecutionFacts`. WorkerResult carries facts. Queue format SWQ4 reads SWQ1/2/3. Details format missing values explicitly.
 
-- [ ] Add failing queue/store tests: category resolution, group atomicity, rename/delete after admission, retry/copy labels, history round-trip and old-state absence, malformed stats and paths.
-- [ ] Run tests and observe RED.
-- [ ] Implement queue admission and SWQ4 bounded optional data. Reset execution facts on retry/start; preserve labels. Existing enqueue overload stays compatible with developer probes.
-- [ ] Run queue/job_store/batch_output/profiles GREEN; commit.
+- [x] Add failing queue/store tests: category resolution, group atomicity, rename/delete after admission, retry/copy labels, history round-trip and old-state absence, malformed stats and paths.
+- [x] Run tests and observe RED.
+- [x] Implement queue admission and SWQ4 bounded optional data. Reset execution facts on retry/start; preserve labels. Existing enqueue overload stays compatible with developer probes.
+- [x] Run queue/job_store/batch_output/profiles GREEN; commit.
 
 ### Task 3: Native profile draft editor
 
 Interfaces: existing PanelActions.save receives complete Settings. Existing common controls retain IDs/contracts. New controls use IDs >=400; editor owns independent selection/draft and category-specific parameter visibility.
 
-- [ ] Extend panel tests to create/template/duplicate/delete/save, select active, reject invalid transitions without losing the editor, retain common settings on progress, hide irrelevant controls and verify scroll/DPI layout.
-- [ ] Run RED before creating controls.
-- [ ] Add editor and consequences block at top of Conversion, plus common settings below. Save editor before selection changes/Save. Explicit active choice, format availability explanation, defaults retains definitions and clears active map.
-- [ ] Run panel_contract plus profiles/options GREEN, automatic native layout checks at 96/144/192 DPI. Commit.
+- [x] Extend panel tests to create/template/duplicate/delete/save, select active, reject invalid transitions without losing the editor, retain common settings on progress, hide irrelevant controls and verify scroll/DPI layout.
+- [x] Run RED before creating controls.
+- [x] Add editor and consequences block at top of Conversion, plus common settings below. Save editor before selection changes/Save. Explicit active choice, format availability explanation, defaults retains definitions and clears active map.
+- [x] Run panel_contract plus profiles/options GREEN, automatic native layout checks at 96/144/192 DPI. Commit.
 
 ### Task 4: Actual execution details and final verification
 
 Interfaces: bounded execution event type distinct from SWP1; engine identifiers from a known allowlist and at most16 stages. Worker measures elapsed and input/output bytes once, preserves already completed stages on error/cancel. Successful encoder branch records actual backend and fallback.
 
-- [ ] Add RED tests for valid/malformed execution messages, no fabricated backend, CPU-after-GPU fallback and cancelled/failed sizes; add real profile conversion helper/integration using production Worker and queue resolver.
-- [ ] Implement events and record completed branches in native/bridge/Office/PDF/OCR/media routes. Extend worker reader without weakening progress limits. Keep children from inheriting report stdout. Measure only owned published output; skip links.
-- [ ] Wire app admission and retry to profile snapshots and facts; show name/engine/backend/elapsed/bytes in existing task detail only.
-- [ ] Run focused protocol, media, profile execution and panel tests GREEN; build final app. Gracefully close only the exact local idle app if necessary, preserve INI, then start normal final EXE.
-- [ ] Run maintained Full checks, fresh read-only review of BASE..HEAD plus uncommitted final changes. Fix material review findings with RED/GREEN, retain explicit skips. No manual or public operations.
-- [ ] Mark approved spec/roadmap complete only after checks; save user documentation, evidence and local commits. Leave ordinary app running and working tree clean.
+- [x] Add RED tests for valid/malformed execution messages, no fabricated backend, CPU-after-GPU fallback and cancelled/failed sizes; add real profile conversion helper/integration using production Worker and queue resolver.
+- [x] Implement events and record completed branches in native/bridge/Office/PDF/OCR/media routes. Extend worker reader without weakening progress limits. Keep children from inheriting report stdout. Measure only owned published output; skip links.
+- [x] Wire app admission and retry to profile snapshots and facts; show name/engine/backend/elapsed/bytes in existing task detail only.
+- [x] Run focused protocol, media, profile execution and panel tests GREEN; build final app. Gracefully close only the exact local idle app if necessary, preserve INI, then start normal final EXE.
+- [x] Run maintained Full checks, fresh read-only review of BASE..HEAD plus uncommitted final changes. Fix material review findings with RED/GREEN, retain explicit skips. No manual or public operations.
+- [x] Mark approved spec/roadmap complete only after checks; save user documentation, evidence and local commits. Leave ordinary app running and working tree clean.
 
 ## Plan review and execution record
 
 Self-review: all seven design sections map to the four tasks. Per-input snapshots require queue overloads rather than reusing a single options snapshot for a mixed group. Optional facts must remain absent for legacy history. Implementation runs inline under existing local-work authorization; design was explicitly approved by owner.
+
+Execution complete: Full59/59 PASS304.07s, profile_execution12actual conversions PASS24.48s. One fresh review returned2P2 plus an ignored-parameter P3 regraded by user effect; all3 fixed RED->GREEN3/3 and finalFull. Native app startup/exit PASS, INI SHA unchanged, clean legacy queue remainsSWQ3. Final normal app left running PID23768 on the exact D runtime. All own failed fixture trees and marked Full workspace removed after evidence archiving. Stage6 remains unstarted.

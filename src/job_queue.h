@@ -84,12 +84,12 @@ public:
         job->state = JobState::Running;
         ++revision_;
     }
-    void complete(uint64_t id, JobState state, const std::filesystem::path& output, std::wstring message) {
+    void complete(uint64_t id, JobState state, const std::filesystem::path& output, std::wstring message,std::optional<ExecutionFacts> facts={}) {
         auto job = find(id);
         if (!job || job->state != JobState::Running || state == JobState::Queued || state == JobState::Running)
             throw std::runtime_error("Некорректное завершение задачи.");
         record(*job, state, output, message);
-        job->state = state; job->output = output; job->message = std::move(message);
+        job->state = state; job->output = output; job->message = std::move(message);job->facts=std::move(facts);
         ++revision_;
         auto completed = jobs_.size() - pending() - (active() ? 1 : 0);
         while (completed > 100) {
@@ -130,7 +130,8 @@ public:
         for(const auto& [id,batch]:batches_) s.batches.push_back(batch);
         return s;
     }
-    void restore(const QueueSnapshot& snapshot);
+    // Returns true only when recovery changed durable job history.
+    bool restore(const QueueSnapshot& snapshot);
     void clear_history() {
         std::erase_if(jobs_,[](const auto& j){return j.state!=JobState::Queued&&j.state!=JobState::Running;});
         completed_batches_.clear();++revision_;

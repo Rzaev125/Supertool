@@ -31,7 +31,7 @@ int main(){try{
  save_queue(dir/L"photo.dat",photo_snapshot);
  check(load_queue(dir/L"photo.dat")->jobs[0].options.image_metadata==ImageMetadata::PhotoDetails,"photo details queue mode lost");
  std::filesystem::remove(dir/L"photo.dat");
- JobQueue restored;restored.restore(*snapshot);
+ JobQueue restored;check(restored.restore(*snapshot),"interrupted recovery must mark history changed");
  check(restored.paused()&&!restored.next(),"recovered queue automatically starts");
  check(restored.items()[0].state==JobState::Interrupted,"active job replayed");
  check(restored.items()[1].options.pdf_dpi==300&&restored.items()[1].options.ocr_languages=="rus+aze","options lost");
@@ -41,7 +41,7 @@ int main(){try{
  restored.set_paused(false);auto second=restored.next()->id;restored.start(second);restored.complete(second,JobState::Failed,{},L"error");
  auto outcomes=restored.take_batch_outcomes();check(outcomes.size()==1&&outcomes[0].failed==1&&outcomes[0].cancelled==1,"restored group accounting");
  save_queue(path,restored.snapshot());check(load_queue(path)->jobs.size()==2,"history missing");
- JobQueue history_only;history_only.restore(restored.snapshot());check(!history_only.paused(),"history-only restart silently pauses fresh admissions");
+ JobQueue history_only;check(!history_only.restore(restored.snapshot()),"clean history recovery must not force a migration write");check(!history_only.paused(),"history-only restart silently pauses fresh admissions");
  auto unavailable=restored.snapshot();unavailable.jobs[0].input=L"Z:\\disconnected\\input.png";
  save_queue(dir/L"unavailable.dat",unavailable);check(load_queue(dir/L"unavailable.dat")->jobs.size()==2,"unavailable historical path destroyed store");std::filesystem::remove(dir/L"unavailable.dat");
  auto bad=restored.snapshot();bad.jobs.push_back(bad.jobs[0]);reject([&]{save_queue(path,bad);});check(load_queue(path)->jobs.size()==2,"failed save replaced old state");

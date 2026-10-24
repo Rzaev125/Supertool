@@ -1,4 +1,5 @@
 #include "pdf_converter.h"
+#include "execution.h"
 #include "engines.h"
 #include "progress.h"
 #include "ocr.h"
@@ -84,6 +85,7 @@ void encode(const fs::path& path, Format format, UINT width, UINT height, std::v
     hr(frame->SetPixelFormat(&pixel_format)); hr(factory->CreateFormatConverter(&converter));
     hr(converter->Initialize(bitmap.Get(), pixel_format, WICBitmapDitherTypeNone, nullptr, 0, WICBitmapPaletteTypeCustom));
     hr(frame->WriteSource(converter.Get(), nullptr)); hr(frame->Commit()); hr(encoder->Commit());
+    report_engine("wic");
 }
 }
 void convert_pdf(const fs::path& input, const fs::path& output, Format format, const ConversionOptions& options) {
@@ -103,6 +105,7 @@ void convert_pdf(const fs::path& input, const fs::path& output, Format format, c
     if (pdf.form_type(document.get()) != 0)
         throw std::runtime_error("PDF содержит интерактивную форму. Сначала сохраните её как обычный PDF без полей, чтобы значения не потерялись.");
     int count = pdf.pages(document.get());
+    if(count>0)report_engine("pdfium");
     if (count < 1 || count > 1000) throw std::runtime_error("Поддерживается PDF от 1 до 1000 страниц.");
     const bool images = format == Format::Png || format == Format::Jpeg;
     std::ofstream text;

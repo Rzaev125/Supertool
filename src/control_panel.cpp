@@ -328,12 +328,13 @@ struct ControlPanel::Impl {
     int profile_offset() const {
         if(profile_index<0||profile_index>=static_cast<int>(draft.profiles.size()))return 480;
         auto c=draft.profiles[profile_index].category;
-        int rows=c==Category::Image||c==Category::Video||c==Category::Pdf?3:c==Category::Audio?2:0;
+        int rows=profile_extracts_audio(draft.profiles[profile_index])?2:c==Category::Image||c==Category::Video||c==Category::Pdf?3:c==Category::Audio?2:0;
         return 640+74*rows;
     }
     void profile_hint(){
-        auto*p=editing_profile();if(!p){set_text(setting(ProfileConsequences),L"Выберите профиль для редактирования или создайте новый. Активный профиль применяется только к своему формату; остальные секторы используют общие параметры ниже. Изменения вступают в силу после «Сохранить настройки».");return;}
-        auto hint=profile_consequences(*p);auto configured=configured_formats(category_sample(p->category),draft);
+        auto*p=editing_profile();std::wstring hint;
+        if(!p){hint=L"Выберите профиль для редактирования или создайте новый. Активный профиль применяется только к своему формату; остальные секторы используют общие параметры ниже. Изменения вступают в силу после «Сохранить настройки».";auto a=draft.active_profiles.find(categories[profile_category_index].category);if(a!=draft.active_profiles.end())for(auto&v:draft.profiles)if(v.id==a->second){p=&v;hint+=L"\r\nАктивен: "+p->name+L". ";break;}if(!p){set_text(setting(ProfileConsequences),hint);return;}}
+        hint+=profile_consequences(*p);auto configured=configured_formats(category_sample(p->category),draft);
         if(std::find(configured.begin(),configured.end(),p->format)==configured.end())hint+=L"\r\nФормат скрыт в настройках колеса: профиль пока не применяется.";
         else if(available_formats(category_sample(p->category),{p->format},[&](auto id){auto it=state.installed_modules.find(std::string(id));return it!=state.installed_modules.end()&&it->second;}).empty())hint+=L"\r\nНужный модуль недоступен: формат не появится в колесе до установки.";
         set_text(setting(ProfileConsequences),hint);
@@ -342,11 +343,11 @@ struct ControlPanel::Impl {
         auto*p=editing_profile();if(!p)return true;auto candidate=*p;
         candidate.name=text_of(setting(ProfileName));while(!candidate.name.empty()&&candidate.name.front()==L' ')candidate.name.erase(0,1);while(!candidate.name.empty()&&candidate.name.back()==L' ')candidate.name.pop_back();
         auto f=SendMessageW(setting(ProfileFormat),CB_GETCURSEL,0,0);if(f<0||static_cast<size_t>(f)>=profile_format_order.size())return false;candidate.format=profile_format_order[f];
-        auto& o=candidate.options;auto c=candidate.category;bool okay=true;
+        auto& o=candidate.options;auto c=candidate.category;bool okay=true;const bool sound=c==Category::Audio||profile_extracts_audio(candidate);
         if(c==Category::Image||c==Category::Video||c==Category::Audio){o.quality=static_cast<QualityPreset>(SendMessageW(setting(ProfileQuality),CB_GETCURSEL,0,0));o.resources=static_cast<ResourceMode>(SendMessageW(setting(ProfileResources),CB_GETCURSEL,0,0));}
         if(c==Category::Image)okay=unsigned_value(setting(ProfileSize),o.image_max_dimension);
-        if(c==Category::Video){okay=unsigned_value(setting(ProfileSize),o.video_max_height);o.video_codec=static_cast<VideoCodec>(SendMessageW(setting(ProfileCodec),CB_GETCURSEL,0,0));o.video_acceleration=static_cast<VideoAcceleration>(SendMessageW(setting(ProfileAcceleration),CB_GETCURSEL,0,0));}
-        if(c==Category::Audio&&candidate.format!=Format::Flac&&candidate.format!=Format::Wav)okay=unsigned_value(setting(ProfileSize),o.audio_bitrate_kbps);
+        if(c==Category::Video&&!sound){okay=unsigned_value(setting(ProfileSize),o.video_max_height);o.video_codec=static_cast<VideoCodec>(SendMessageW(setting(ProfileCodec),CB_GETCURSEL,0,0));o.video_acceleration=static_cast<VideoAcceleration>(SendMessageW(setting(ProfileAcceleration),CB_GETCURSEL,0,0));}
+        if(sound&&candidate.format!=Format::Flac&&candidate.format!=Format::Wav)okay=unsigned_value(setting(ProfileSize),o.audio_bitrate_kbps);
         if(c==Category::Image)o.image_metadata=static_cast<ImageMetadata>(SendMessageW(setting(ProfileMetadata),CB_GETCURSEL,0,0));
         if(c==Category::Pdf){if(candidate.format!=Format::Txt)okay=unsigned_value(setting(ProfileSize),o.pdf_dpi);else{o.pdf_ocr=Button_GetCheck(setting(ProfileOcr))==BST_CHECKED;o.ocr_languages.clear();for(auto pair:{std::pair{ProfileEnglish,"eng"},std::pair{ProfileRussian,"rus"},std::pair{ProfileAzerbaijani,"aze"}})if(Button_GetCheck(setting(pair.first))==BST_CHECKED){if(!o.ocr_languages.empty())o.ocr_languages+='+';o.ocr_languages+=pair.second;}}}
         try{auto next=draft;next.profiles[profile_index]=candidate;if(!okay)throw std::runtime_error("number");validate_profiles(next);*p=std::move(candidate);return true;}
@@ -362,16 +363,17 @@ struct ControlPanel::Impl {
         auto*p=editing_profile();EnableWindow(setting(ProfileCopy),p!=nullptr);EnableWindow(setting(ProfileDelete),p!=nullptr);
         if(p){set_text(setting(ProfileName),p->name);profile_format_order=formats_for(category_sample(c));SendMessageW(setting(ProfileFormat),CB_RESETCONTENT,0,0);int chosen=0;for(size_t i=0;i<profile_format_order.size();++i){auto f=profile_format_order[i];SendMessageW(setting(ProfileFormat),CB_ADDSTRING,0,reinterpret_cast<LPARAM>(label(f)));if(f==p->format)chosen=static_cast<int>(i);}SendMessageW(setting(ProfileFormat),CB_SETCURSEL,chosen,0);
             auto&o=p->options;for(auto pair:{std::pair{ProfileQuality,static_cast<int>(o.quality)},std::pair{ProfileResources,static_cast<int>(o.resources)},std::pair{ProfileCodec,static_cast<int>(o.video_codec)},std::pair{ProfileAcceleration,static_cast<int>(o.video_acceleration)},std::pair{ProfileMetadata,static_cast<int>(o.image_metadata)}})SendMessageW(setting(pair.first),CB_SETCURSEL,pair.second,0);
-            auto value=c==Category::Image?o.image_max_dimension:c==Category::Video?o.video_max_height:c==Category::Audio?o.audio_bitrate_kbps:o.pdf_dpi;set_text(setting(ProfileSize),std::to_wstring(value));Button_SetCheck(setting(ProfileOcr),o.pdf_ocr?BST_CHECKED:BST_UNCHECKED);for(auto pair:{std::pair{ProfileEnglish,"eng"},std::pair{ProfileRussian,"rus"},std::pair{ProfileAzerbaijani,"aze"}})Button_SetCheck(setting(pair.first),o.ocr_languages.find(pair.second)!=std::string::npos?BST_CHECKED:BST_UNCHECKED);
+            auto value=c==Category::Image?o.image_max_dimension:c==Category::Audio||profile_extracts_audio(*p)?o.audio_bitrate_kbps:c==Category::Video?o.video_max_height:o.pdf_dpi;set_text(setting(ProfileSize),std::to_wstring(value));Button_SetCheck(setting(ProfileOcr),o.pdf_ocr?BST_CHECKED:BST_UNCHECKED);for(auto pair:{std::pair{ProfileEnglish,"eng"},std::pair{ProfileRussian,"rus"},std::pair{ProfileAzerbaijani,"aze"}})Button_SetCheck(setting(pair.first),o.ocr_languages.find(pair.second)!=std::string::npos?BST_CHECKED:BST_UNCHECKED);
         }
         rebuilding=false;profile_hint();layout();
     }
     void new_profile(int kind,bool copy=false){
         if(draft.profiles.size()>=32){settings_error(L"Можно сохранить до 32 профилей.");return;}
         Settings current;if(!read_settings(current))return;draft=std::move(current);
-        auto p=make_profile(categories[profile_category_index].category,draft.conversion,kind);if(copy){if(auto*old=editing_profile()){auto id=p.id;p=*old;p.id=id;p.name+=L" копия";}}
-        auto base=p.name;for(unsigned n=1;;++n){bool exists=std::any_of(draft.profiles.begin(),draft.profiles.end(),[&](auto&v){return v.category==p.category&&CompareStringOrdinal(v.name.c_str(),-1,p.name.c_str(),-1,TRUE)==CSTR_EQUAL;});if(!exists)break;auto suffix=L" "+std::to_wstring(n);p.name=base.substr(0,64-suffix.size())+suffix;}
-        if(p.name.size()>64)p.name=p.name.substr(0,64);draft.profiles.push_back(std::move(p));profile_index=static_cast<int>(draft.profiles.size())-1;for(size_t i=0;i<categories.size();++i)if(categories[i].category==draft.profiles.back().category)profile_category_index=static_cast<int>(i);fill_profiles();settings_error(L"Профиль создан в черновике. Выберите его активным и сохраните настройки.");
+        auto bounded=[](std::wstring base,const std::wstring&suffix){base.resize(std::min(base.size(),64-suffix.size()));if(!base.empty()&&base.back()>=0xd800&&base.back()<=0xdbff)base.pop_back();return base+suffix;};
+        auto p=make_profile(categories[profile_category_index].category,draft.conversion,kind);if(copy){if(auto*old=editing_profile()){auto id=p.id;p=*old;p.id=id;p.name=bounded(p.name,L" копия");}}
+        auto base=p.name;for(unsigned n=1;;++n){bool exists=std::any_of(draft.profiles.begin(),draft.profiles.end(),[&](auto&v){return v.category==p.category&&CompareStringOrdinal(v.name.c_str(),-1,p.name.c_str(),-1,TRUE)==CSTR_EQUAL;});if(!exists)break;p.name=bounded(base,L" "+std::to_wstring(n));}
+        draft.profiles.push_back(std::move(p));profile_index=static_cast<int>(draft.profiles.size())-1;for(size_t i=0;i<categories.size();++i)if(categories[i].category==draft.profiles.back().category)profile_category_index=static_cast<int>(i);fill_profiles();settings_error(L"Профиль создан в черновике. Выберите его активным и сохраните настройки.");
     }
     void layout_profiles(int width){
         const int inside=width-56,half=(inside-20)/2,right=48+half,third=(inside-16)/3;
@@ -382,16 +384,16 @@ struct ControlPanel::Impl {
         for(auto pair:{std::pair{ProfilePhoto,0},std::pair{ProfileVideo,1},std::pair{ProfileAudio,2}})place(pair.first,28+(third+8)*pair.second,334,third,46);
         auto*p=editing_profile();if(!p){place(ProfileConsequences,28,400,inside,142);return;}
         row(ProfileNameLabel,ProfileName,28,394,inside);row(ProfileFormatLabel,ProfileFormat,28,468,inside);
-        int y=542;auto c=p->category;
+        int y=542;auto c=p->category;const bool sound=c==Category::Audio||profile_extracts_audio(*p);
         if(c==Category::Image||c==Category::Video||c==Category::Audio){row(ProfileQualityLabel,ProfileQuality,28,y,half);row(ProfileResourcesLabel,ProfileResources,right,y,half);y+=74;}
-        EnableWindow(setting(ProfileQuality),!(c==Category::Audio&&(p->format==Format::Wav||p->format==Format::Flac)));
+        EnableWindow(setting(ProfileQuality),!(sound&&(p->format==Format::Wav||p->format==Format::Flac)));
         if(c==Category::Image||c==Category::Video||c==Category::Audio||c==Category::Pdf){
-            set_text(setting(ProfileSizeLabel),c==Category::Image?L"Сторона, px (0 — исходная)":c==Category::Video?L"Высота, px (0 — исходная)":c==Category::Audio?L"Битрейт, кбит/с (0 — авто)":L"Растровый экспорт, DPI");
-            row(ProfileSizeLabel,ProfileSize,28,y,half);EnableWindow(setting(ProfileSize),!(c==Category::Audio&&(p->format==Format::Wav||p->format==Format::Flac))&&!(c==Category::Pdf&&p->format==Format::Txt));
-            if(c==Category::Video)row(ProfileCodecLabel,ProfileCodec,right,y,half);y+=74;
+            set_text(setting(ProfileSizeLabel),c==Category::Image?L"Сторона, px (0 — исходная)":sound?L"Битрейт, кбит/с (0 — авто)":c==Category::Video?L"Высота, px (0 — исходная)":L"Растровый экспорт, DPI");
+            row(ProfileSizeLabel,ProfileSize,28,y,half);EnableWindow(setting(ProfileSize),!(sound&&(p->format==Format::Wav||p->format==Format::Flac))&&!(c==Category::Pdf&&p->format==Format::Txt));
+            if(c==Category::Video&&!sound)row(ProfileCodecLabel,ProfileCodec,right,y,half);y+=74;
         }
         if(c==Category::Image){row(ProfileMetadataLabel,ProfileMetadata,28,y,inside);y+=74;}
-        if(c==Category::Video){row(ProfileAccelerationLabel,ProfileAcceleration,28,y,inside);y+=74;}
+        if(c==Category::Video&&!sound){row(ProfileAccelerationLabel,ProfileAcceleration,28,y,inside);y+=74;}
         if(c==Category::Pdf){place(ProfileOcr,28,y,inside,30);place(ProfileEnglish,28,y+40,half,30);place(ProfileRussian,right,y+40,half,30);place(ProfileAzerbaijani,28,y+78,inside,30);for(auto id:{ProfileOcr,ProfileEnglish,ProfileRussian,ProfileAzerbaijani})EnableWindow(setting(id),p->format==Format::Txt);y+=148;}
         place(ProfileConsequences,28,y+8,inside,150);
     }
@@ -574,6 +576,7 @@ struct ControlPanel::Impl {
         }
         rebuilding = false;
         selection_changed();
+        if(previous.installed_modules!=state.installed_modules&&editing_profile()&&save_profile_editor(false))profile_hint();
     }
     void settings_error(const wchar_t* message, bool success = false) { feedback_success=success;set_text(main_control(SettingsError),message);InvalidateRect(main_control(SettingsError),nullptr,TRUE); }
     void save_visible_formats() {
@@ -735,6 +738,15 @@ struct ControlPanel::Impl {
     }
     void command(int id, int notification) {
         if (rebuilding) return;
+        if(id==ProfileFormat&&notification==CBN_SELCHANGE){
+            auto*p=editing_profile();if(!p)return;auto chosen=SendMessageW(setting(ProfileFormat),CB_GETCURSEL,0,0);auto old=std::find(profile_format_order.begin(),profile_format_order.end(),p->format);
+            SendMessageW(setting(ProfileFormat),CB_SETCURSEL,std::distance(profile_format_order.begin(),old),0);
+            if(!save_profile_editor()){set_text(setting(ProfileConsequences),L"Исправьте параметры текущего формата перед переходом. Ошибочный черновик оставлен доступным для редактирования.");return;}
+            if(chosen<0||static_cast<size_t>(chosen)>=profile_format_order.size())return;
+            auto next=draft;next.profiles[profile_index].format=profile_format_order[chosen];
+            try{validate_profiles(next);*p=std::move(next.profiles[profile_index]);fill_profiles();settings_error(L"");}
+            catch(...){settings_error(L"Формат несовместим с текущим кодеком. Сначала измените кодек; прежний формат сохранён.");}return;
+        }
         if((id==ProfileCategory||id==ProfileChoice||id==ProfileActive)&&notification==CBN_SELCHANGE){
             const int chosen=static_cast<int>(SendMessageW(setting(id),CB_GETCURSEL,0,0));
             if(!save_profile_editor()){
@@ -749,7 +761,7 @@ struct ControlPanel::Impl {
         }
         if(notification==BN_CLICKED&&(id==ProfileNew||id==ProfileCopy||id==ProfilePhoto||id==ProfileVideo||id==ProfileAudio)){new_profile(id==ProfilePhoto?0:id==ProfileVideo?1:id==ProfileAudio?2:-1,id==ProfileCopy);return;}
         if(notification==BN_CLICKED&&id==ProfileDelete){if(auto*p=editing_profile()){const auto c=p->category;auto a=draft.active_profiles.find(c);if(a!=draft.active_profiles.end()&&a->second==p->id)draft.active_profiles.erase(a);draft.profiles.erase(draft.profiles.begin()+profile_index);profile_index=-1;fill_profiles();settings_error(L"Профиль удалён из черновика. Примените сохранение.");}return;}
-        if(((id==ProfileName||id==ProfileSize)&&notification==EN_CHANGE)||((id==ProfileFormat||id>=ProfileQuality&&id<=ProfileMetadata)&&notification==CBN_SELCHANGE)||((id>=ProfileOcr&&id<=ProfileAzerbaijani)&&notification==BN_CLICKED)){
+        if(((id==ProfileName||id==ProfileSize)&&notification==EN_CHANGE)||((id>=ProfileQuality&&id<=ProfileMetadata)&&notification==CBN_SELCHANGE)||((id>=ProfileOcr&&id<=ProfileAzerbaijani)&&notification==BN_CLICKED)){
             if(save_profile_editor(false)){profile_hint();if(id==ProfileFormat)layout();}else set_text(setting(ProfileConsequences),L"Проверьте параметры профиля: есть недопустимое значение. Черновик сохранён в редакторе, применение заблокировано.");return;
         }
         if (id == IDCANCEL) { ShowWindow(window, SW_HIDE); return; }

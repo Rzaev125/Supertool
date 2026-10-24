@@ -41,7 +41,10 @@ void Worker::start(const fs::path& input, Format format, HWND notify, const Conv
     if (output_.empty()) throw std::runtime_error("Не удалось подобрать свободное имя.");
     GUID guid{}; if (FAILED(CoCreateGuid(&guid))) throw std::runtime_error("Не удалось создать идентификатор задачи.");
     wchar_t token[40]{}; StringFromGUID2(guid, token, 40);
-    staging_ = destination / (std::wstring(L".shiftwheel-") + token);
+    // A fresh compact token leaves room for LibreOffice's private nested profile.
+    // Atomic CreateDirectory still refuses every collision; no existing path is reused.
+    std::wstring compact;for(auto c:std::wstring(token))if(iswxdigit(c))compact+=c;compact.resize(16);
+    staging_ = destination / (std::wstring(L".shiftwheel-") + compact);
     if (!CreateDirectoryW(staging_.c_str(), nullptr)) { staging_.clear(); throw std::runtime_error(file_error(GetLastError(),"Не удалось создать временную папку результата.")); }
     SetFileAttributesW(staging_.c_str(), FILE_ATTRIBUTE_HIDDEN);
     temporary_ = staging_ / L"result.tmp";
@@ -85,13 +88,14 @@ void Worker::start(const fs::path& input, Format format, HWND notify, const Conv
         CloseHandle(writer.value); writer.value = INVALID_HANDLE_VALUE;
         if (!AssignProcessToJobObject(job_, process_)) throw std::runtime_error("Windows не разрешила изоляцию конвертера.");
         cancelled_ = false;
-        { std::lock_guard lock(progress_mutex_); progress_ = {-1, L"Подготовка"}; }
+        { std::lock_guard lock(progress_mutex_); progress_ = {-1, L"Подготовка"}; facts_={}; }
         reader_ = std::thread([this, notify] {
             try {
                 BoundedLines decoder;
                 char buffer[4096]; DWORD received = 0;
                 while (ReadFile(progress_pipe_, buffer, sizeof(buffer), &received, nullptr) && received) {
                     for (const auto& line : decoder.feed(std::string_view(buffer, received))) {
+                        if(line.starts_with("SWE1\t")){std::lock_guard lock(progress_mutex_);parse_execution(line,facts_);continue;}
                         JobProgress event;
                         if (!parse_progress(line, event)) continue;
                         bool changed = false;
@@ -105,10 +109,12 @@ void Worker::start(const fs::path& input, Format format, HWND notify, const Conv
                 }
             } catch (...) { /* Progress is advisory; conversion completion remains authoritative. */ }
         });
+        started_tick_=GetTickCount64();
         if (ResumeThread(info.hThread) == static_cast<DWORD>(-1)) throw std::runtime_error("Не удалось запустить поток конвертера.");
         CloseHandle(info.hThread); info.hThread = nullptr;
         waiter_ = std::thread([this, notify] {
             WaitForSingleObject(process_, INFINITE);
+            {std::lock_guard lock(progress_mutex_);facts_.elapsed_ms=GetTickCount64()-started_tick_;}
             // Descendants may still hold stdout open after the worker exits.
             stop_job(job_);
             if (reader_.joinable()) reader_.join();
@@ -133,6 +139,8 @@ WorkerResult Worker::finish() {
     // deletes a final output, even if it races with the final rename.
     result.success = code == 0 && fs::exists(output_);
     result.cancelled = cancelled_ && !result.success;
+    {std::lock_guard lock(progress_mutex_);result.facts=facts_;}
+    if(!result.success)result.facts.output_bytes.reset();
     if (result.success) result.message = output_.filename().wstring();
     else if (result.cancelled) result.message = L"Конвертация отменена. Оригинал сохранён.";
     else {

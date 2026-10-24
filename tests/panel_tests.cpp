@@ -486,6 +486,28 @@ int main(int argc,char** argv) {
         panel.update({});check(control_text(child(window,403))==L"Видео 1080p","profile draft changed by progress");
         click(child(window,Apply));check(saved_settings.profiles.size()==3,"category profile save");
     });
+    run("long Unicode profile copy and inactive target warnings",[&]{
+        Settings s;auto p=make_profile(Category::Image,{},0);p.name=std::wstring(62,L'ф')+L"😀";p.format=Format::Heic;s.profiles={p};s.active_profiles[Category::Image]=p.id;s.wheels[Category::Image]={Format::Png};panel.set_settings(s);
+        auto category=child(window,400);SendMessageW(category,CB_SETCURSEL,0,0);SendMessageW(GetParent(category),WM_COMMAND,MAKEWPARAM(400,CBN_SELCHANGE),reinterpret_cast<LPARAM>(category));check(control_text(child(window,445)).find(L"скрыт")!=std::wstring::npos,"active hidden format warning absent without editor selection");
+        auto editor=child(window,401);SendMessageW(editor,CB_SETCURSEL,1,0);SendMessageW(GetParent(editor),WM_COMMAND,MAKEWPARAM(401,CBN_SELCHANGE),reinterpret_cast<LPARAM>(editor));auto copy=child(window,406);SendMessageW(GetParent(copy),WM_COMMAND,MAKEWPARAM(406,BN_CLICKED),reinterpret_cast<LPARAM>(copy));auto before=saved;click(child(window,Apply));check(saved==before+1&&saved_settings.profiles.size()==2,"long Unicode duplicate rejected");check(saved_settings.profiles[0].name!=saved_settings.profiles[1].name&&valid_profile_name(saved_settings.profiles[1].name),"copy split Unicode or retained duplicate name");
+    });
+    run("invalid format transitions retain editable audio and OCR fields",[&]{
+        auto choose=[&](int id,int index){auto h=child(window,id);SendMessageW(h,CB_SETCURSEL,index,0);SendMessageW(GetParent(h),WM_COMMAND,MAKEWPARAM(id,CBN_SELCHANGE),reinterpret_cast<LPARAM>(h));};
+        Settings s;auto p=make_profile(Category::Audio,{},2);s.profiles={p};panel.set_settings(s);choose(400,2);choose(401,1);
+        SetWindowTextW(child(window,422),L"1");choose(404,1); // WAV must not discard invalid MP3 draft.
+        check(IsWindowEnabled(child(window,422))&&SendMessageW(child(window,404),CB_GETCURSEL,0,0)==0,"invalid MP3 -> WAV left disabled correcting field");
+        SetWindowTextW(child(window,422),L"192");choose(404,1);check(!IsWindowEnabled(child(window,422)),"WAV bitrate not disabled");choose(404,0);check(IsWindowEnabled(child(window,422)),"MP3 bitrate not re-enabled");
+        s={};p=make_profile(Category::Pdf,{});p.format=Format::Txt;s.profiles={p};panel.set_settings(s);choose(400,5);choose(401,1);
+        for(int id:{427,428,429})SendMessageW(child(window,id),BM_SETCHECK,BST_UNCHECKED,0);choose(404,0);
+        check(IsWindowEnabled(child(window,427))&&SendMessageW(child(window,404),CB_GETCURSEL,0,0)==2,"invalid TXT -> PNG stranded OCR languages");
+    });
+    run("video audio extraction exposes effective bitrate instead of GPU controls",[&]{
+        Settings s;auto p=make_profile(Category::Video,{},1);p.format=Format::Mp3;s.profiles={p};panel.set_settings(s);
+        auto choose=[&](int id,int index){auto h=child(window,id);SendMessageW(h,CB_SETCURSEL,index,0);SendMessageW(GetParent(h),WM_COMMAND,MAKEWPARAM(id,CBN_SELCHANGE),reinterpret_cast<LPARAM>(h));};choose(400,1);choose(401,1);
+        auto rail=child(window,227);SendMessageW(rail,LB_SETCURSEL,1,0);SendMessageW(window,WM_COMMAND,MAKEWPARAM(227,LBN_SELCHANGE),reinterpret_cast<LPARAM>(rail));
+        check((GetWindowLongPtrW(child(window,423),GWL_STYLE)&WS_VISIBLE)==0&&(GetWindowLongPtrW(child(window,424),GWL_STYLE)&WS_VISIBLE)==0,"video audio extraction exposes ignored GPU/codec");
+        check(control_text(child(window,452)).find(L"Битрейт")!=std::wstring::npos,"video audio extraction has height field");SetWindowTextW(child(window,422),L"160");click(child(window,Apply));check(saved_settings.profiles[0].options.audio_bitrate_kbps==160,"extraction bitrate lost");
+    });
     panel.shutdown();
     check(!panel.handle() && !IsWindow(window), "shutdown destroys native window");
     DestroyWindow(host);

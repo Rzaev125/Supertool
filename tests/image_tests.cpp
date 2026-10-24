@@ -1,4 +1,5 @@
 #include "image_converter.h"
+#include "execution.h"
 #include <windows.h>
 #include <wincodec.h>
 #include <wrl/client.h>
@@ -10,6 +11,16 @@
 #include <stdexcept>
 using Microsoft::WRL::ComPtr;
 namespace fs = std::filesystem;
+namespace {
+fs::path telemetry_public,telemetry_owned;
+bool measured_private=false;
+uint64_t measured_bytes=0;
+}
+// Observe the producer boundary while retaining the real native WIC implementation.
+namespace shiftwheel {
+void report_engine(std::string_view) noexcept {}
+void report_output_size(const fs::path& path) noexcept {if(telemetry_public.empty())return;try{telemetry_owned=path;measured_private=!fs::exists(telemetry_public)&&fs::is_regular_file(path);measured_bytes=fs::file_size(path);}catch(...){measured_private=false;}}
+}
 void check(bool value, const char* message) { if (!value) throw std::runtime_error(message); }
 void hr(HRESULT value) { if (FAILED(value)) throw std::runtime_error("WIC test fixture failed"); }
 std::vector<char> bytes(const fs::path& path) { std::ifstream f(path, std::ios::binary); return {std::istreambuf_iterator<char>(f), {}}; }
@@ -50,6 +61,12 @@ int main() {
     const auto source = root / L"Прозрачное фото.png";
     fixture(source, 0);
     const auto original = bytes(source);
+    run("image size is measured from owned temporary before publication",[&]{
+        telemetry_public=root/L"telemetry.png";auto temporary=root/L"telemetry.tmp";
+        shiftwheel::convert_image(source,telemetry_public,temporary);
+        check(measured_private&&telemetry_owned==temporary,"WIC did not measure private result before publication");
+        check(measured_bytes==fs::file_size(telemetry_public),"WIC byte measurement differs from published image");telemetry_public.clear();
+    });
     run("transparent PNG becomes white JPEG and preserves original", [&] {
         auto output = root / L"Результат фото.jpg"; auto temp = root / "jpeg.tmp";
         shiftwheel::convert_image(source, output, temp);

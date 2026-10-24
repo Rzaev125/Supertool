@@ -2,6 +2,7 @@
 #include "policy.h"
 #include "options.h"
 #include "progress.h"
+#include "execution.h"
 #include <windows.h>
 #include <mutex>
 #include <thread>
@@ -13,6 +14,7 @@ struct WorkerResult {
     bool cancelled = false;
     std::wstring message;
     std::filesystem::path output;
+    ExecutionFacts facts;
 };
 class Worker {
 public:
@@ -30,6 +32,8 @@ private:
     std::thread waiter_, reader_;
     mutable std::mutex progress_mutex_;
     JobProgress progress_;
+    ExecutionFacts facts_;
+    ULONGLONG started_tick_ = 0;
     bool cancelled_ = false;
     std::filesystem::path output_, staging_, temporary_;
 };

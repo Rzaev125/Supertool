@@ -1,5 +1,6 @@
 #include "media_converter.h"
 #include "engines.h"
+#include "execution.h"
 #include "file_policy.h"
 #include "progress.h"
 #include <charconv>
@@ -171,7 +172,9 @@ void convert_media(const fs::path& input, const fs::path& output, Format format,
         runner({executable, media_arguments(input, destination, format, options, selected, codec, duration),
             work / (L"encode-" + encoder_name(selected,codec) + L".log"), 6 * 60 * 60 * 1000, duration, stage});
     };
-    if (encoder == VideoEncoder::Cpu) { encode(encoder, output, false); return; }
+    const auto completed=[&](VideoEncoder selected,bool fallback){if(video_output(format)){auto name=format==Format::Webm&&codec==VideoCodec::Default?L"libvpx-vp9":encoder_name(selected,codec);report_encoder(utf8(name),selected==VideoEncoder::Cpu?"cpu":selected==VideoEncoder::Nvidia?"nvidia":selected==VideoEncoder::Intel?"intel":"amd",fallback);}};
+    if (encoder == VideoEncoder::Cpu) { encode(encoder, output, false); completed(encoder,false);
+        if(!video_output(format)){const char* name=format==Format::Mp3?"libmp3lame":format==Format::Wav?"pcm_s16le":format==Format::Flac?"flac":format==Format::Ogg?"libvorbis":format==Format::Opus?"libopus":"aac";report_encoder(name,"cpu",false);}return; }
 
     // The hardware attempt writes inside a directory this call creates
     // exclusively. A failed attempt can therefore never remove a caller's
@@ -190,6 +193,7 @@ void convert_media(const fs::path& input, const fs::path& output, Format format,
         require_unused_output(output);
         if (!MoveFileExW(partial.c_str(), output.c_str(), MOVEFILE_WRITE_THROUGH))
             throw std::runtime_error("Не удалось сохранить результат GPU.");
+        completed(encoder,false);
         return;
     }
     remove_owned_tree(attempt);
@@ -197,5 +201,6 @@ void convert_media(const fs::path& input, const fs::path& output, Format format,
     if (fs::exists(attempt)) throw std::runtime_error("Не удалось удалить незавершённый результат GPU.");
     require_unused_output(output);
     encode(VideoEncoder::Cpu, output, true);
+    completed(VideoEncoder::Cpu,true);
 }
 }

@@ -8,6 +8,7 @@ Category parse_profile_category(std::string_view key);
 void validate_profiles(const Settings& settings);
 bool valid_profile_id(std::string_view id);
 bool valid_profile_name(std::wstring_view name);
+bool profile_extracts_audio(const ConversionProfile& profile);
 ResolvedProfile resolve_profile(const std::filesystem::path& input, Format target, const Settings& settings);
 std::vector<Format> profile_formats(const std::filesystem::path& input, const Settings& settings);
 // template_index: -1=current options, 0=photo, 1=video, 2=audio.
