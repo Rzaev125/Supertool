@@ -539,6 +539,7 @@ struct ControlPanel::Impl {
             SendMessageW(setting(Modules),CB_SETCURSEL,module_selection<0?0:module_selection,0);
         }
         set_text(setting(ModuleInfo),state.module_detail);
+        set_text(setting(InstallModule),state.module_downloads_allowed?(state.selected_module_installed?L"Обновить / восстановить":L"Установить"):(state.selected_module_installed?L"Доступен локально":L"Загрузка отключена"));
         EnableWindow(setting(InstallModule),state.module_downloads_allowed&&state.modules_allowed&&!state.modules_busy&&static_cast<bool>(actions.change_module));
         EnableWindow(setting(RemoveModule),state.modules_allowed&&!state.modules_busy&&static_cast<bool>(actions.change_module));
         EnableWindow(setting(CancelModule),state.modules_busy&&static_cast<bool>(actions.cancel_module));

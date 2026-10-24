@@ -254,10 +254,11 @@ private:
         for(const auto&[id,status]:module_status_cache_)state.installed_modules[id]=status.installed;
         if(selected_module_<module_catalog().size()){
             auto& m=module_catalog()[selected_module_];auto total=m.bytes;
+            const auto& current=module_status_cache_[m.id];state.selected_module_installed=current.installed;
             std::wstring dep=L"нет";
             if(!m.dependency.empty())for(auto& d:module_catalog())if(d.id==m.dependency){dep=d.name;if(!module_status_cache_[m.dependency].installed)total+=d.bytes;}
             auto mib=[](auto n){return std::to_wstring((n+1024*1024-1)/(1024*1024))+L" МБ";};
-            state.module_detail=m.name+L"\r\nДоступная версия: "+m.version+L"; загрузка: "+mib(m.bytes)+L"; на диске: "+mib(m.unpacked)+L"\r\nЗависимости: "+dep+L". Общая загрузка: "+mib(total)+L".\r\n";
+            state.module_detail=m.name+L"\r\nСостояние: "+(current.installed?L"доступен локально; "+current.version:L"файлы модуля не найдены")+L"\r\nВерсия пакета в каталоге: "+m.version+L"; загрузка: "+mib(m.bytes)+L"; на диске: "+mib(m.unpacked)+L"\r\nЗависимости: "+dep+L". Общая загрузка: "+mib(total)+L".\r\n";
             {std::lock_guard lock(module_mutex_);state.module_detail+=module_notice_;}
             if(!state.modules_allowed)state.module_detail+=L"\r\nИзменение модулей доступно после завершения/очистки очереди.";
         }
@@ -290,7 +291,7 @@ private:
     void scan_modules(){
         module_rows_.clear();
         for(auto& spec:module_catalog()){
-            try{auto status=module_status(executable_.parent_path(),spec);module_status_cache_[spec.id]=status;module_rows_.push_back(spec.name+L" — "+(status.installed?status.version:L"не установлен"));}
+            try{auto status=module_status(executable_.parent_path(),spec);module_status_cache_[spec.id]=status;module_rows_.push_back(spec.name+L" — "+(status.installed?L"доступен локально; "+status.version:L"не установлен"));}
             catch(...){module_status_cache_[spec.id]={};module_rows_.push_back(spec.name+L" — ошибка; повторите установку");}
         }
     }

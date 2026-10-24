@@ -508,6 +508,13 @@ int main(int argc,char** argv) {
         check((GetWindowLongPtrW(child(window,423),GWL_STYLE)&WS_VISIBLE)==0&&(GetWindowLongPtrW(child(window,424),GWL_STYLE)&WS_VISIBLE)==0,"video audio extraction exposes ignored GPU/codec");
         check(control_text(child(window,452)).find(L"Битрейт")!=std::wstring::npos,"video audio extraction has height field");SetWindowTextW(child(window,422),L"160");click(child(window,Apply));check(saved_settings.profiles[0].options.audio_bitrate_kbps==160,"extraction bitrate lost");
     });
+    run("module availability is explicit when local downloads are disabled",[&]{
+        PanelState state;state.modules={L"Видео, аудио, WebP — доступен локально"};state.module_downloads_allowed=false;state.selected_module_installed=true;panel.update(state);
+        check(control_text(child(window,142))==L"Доступен локально"&&!IsWindowEnabled(child(window,142)),"installed offline module still asks to install");
+        state.selected_module_installed=false;panel.update(state);check(control_text(child(window,142))==L"Загрузка отключена","missing local module incorrectly shown as available");
+        state.module_downloads_allowed=true;panel.update(state);check(control_text(child(window,142))==L"Установить","missing online module lacks install action");
+        state.selected_module_installed=true;panel.update(state);check(control_text(child(window,142))==L"Обновить / восстановить","installed module still asks for first installation");
+    });
     panel.shutdown();
     check(!panel.handle() && !IsWindow(window), "shutdown destroys native window");
     DestroyWindow(host);
