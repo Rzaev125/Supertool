@@ -154,7 +154,14 @@ void Worker::cleanup() {
     if (process_) { CloseHandle(process_); process_ = nullptr; }
     if (job_) { CloseHandle(job_); job_ = nullptr; }
     if (!staging_.empty()) {
-        remove_owned_tree(staging_);
+        // Handle teardown/scanners can briefly retain engine.log after the job
+        // has no active processes (ERROR_SHARING_VIOLATION). Retry only this
+        // worker's private staging tree, with a bounded 100 ms total delay.
+        for (int attempt = 0; attempt <= 5; ++attempt) {
+            remove_owned_tree(staging_);
+            if (GetFileAttributesW(staging_.c_str()) == INVALID_FILE_ATTRIBUTES) break;
+            if (attempt < 5) Sleep(20);
+        }
     }
     staging_.clear(); temporary_.clear();
 }
