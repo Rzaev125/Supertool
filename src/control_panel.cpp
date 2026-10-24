@@ -1,6 +1,7 @@
 #include "control_panel.h"
 #include "resource.h"
 #include "panel_theme.h"
+#include "profiles.h"
 #include <dwmapi.h>
 #include <uxtheme.h>
 #include <commctrl.h>
@@ -29,7 +30,11 @@ enum Control : int {
     UpdateInfo = 130, CheckUpdate, InstallUpdate, LaterUpdate,
     Modules=140,ModuleInfo,InstallModule,RemoveModule,CancelModule,RefreshModules,
     Codec=320,CodecLabel,ImageMetadataChoice,ImageMetadataLabel,
-    SectionTitle=350,SectionHint
+    SectionTitle=350,SectionHint,
+    ProfileCategory=400,ProfileChoice,ProfileActive,ProfileName,ProfileFormat,ProfileNew,ProfileCopy,ProfileDelete,ProfilePhoto,ProfileVideo,ProfileAudio,
+    ProfileQuality=420,ProfileResources,ProfileSize,ProfileCodec,ProfileAcceleration,ProfileMetadata,ProfileOcr,ProfileEnglish,ProfileRussian,ProfileAzerbaijani,
+    ProfileCategoryLabel=440,ProfileActiveLabel,ProfileChoiceLabel,ProfileNameLabel,ProfileFormatLabel,ProfileConsequences,
+    ProfileQualityLabel=450,ProfileResourcesLabel,ProfileSizeLabel,ProfileCodecLabel,ProfileAccelerationLabel,ProfileMetadataLabel
 };
 constexpr std::array section_names{L"Основные",L"Конвертация",L"Колесо",L"Обновления",L"Модули"};
 constexpr std::array section_hints{
@@ -126,6 +131,9 @@ struct ControlPanel::Impl {
     PanelActions actions;
     std::vector<HWND> task_controls, settings_controls;
     std::vector<Format> format_order;
+    int profile_category_index=0,profile_index=-1;
+    std::vector<int> profile_indices;
+    std::vector<Format> profile_format_order;
 
     ~Impl() {
         if (window) DestroyWindow(window);
@@ -288,6 +296,16 @@ struct ControlPanel::Impl {
         column.pszText = const_cast<wchar_t*>(L"Формат"); column.cx = px(270); ListView_InsertColumn(formats, 0, &column);
         add(page, MoveUp, L"BUTTON", L"Выше", WS_TABSTOP);
         add(page, MoveDown, L"BUTTON", L"Ниже", WS_TABSTOP);
+        for(auto id:{ProfileCategory,ProfileChoice,ProfileActive,ProfileFormat,ProfileQuality,ProfileResources,ProfileCodec,ProfileAcceleration,ProfileMetadata})combo(id);
+        for(const auto& entry:categories)SendMessageW(setting(ProfileCategory),CB_ADDSTRING,0,reinterpret_cast<LPARAM>(entry.name));
+        add(page,ProfileName,L"EDIT",L"",WS_TABSTOP|ES_AUTOHSCROLL);SendMessageW(setting(ProfileName),EM_SETLIMITTEXT,64,0);number(ProfileSize);
+        for(auto item:{std::pair{ProfileNew,L"Создать"},std::pair{ProfileCopy,L"Дублировать"},std::pair{ProfileDelete,L"Удалить"},std::pair{ProfilePhoto,L"Шаблон фото"},std::pair{ProfileVideo,L"Шаблон видео"},std::pair{ProfileAudio,L"Шаблон аудио"}})add(page,item.first,L"BUTTON",item.second,WS_TABSTOP);
+        for(auto item:{std::pair{ProfileCategoryLabel,L"Категория профилей"},std::pair{ProfileActiveLabel,L"Активный профиль"},std::pair{ProfileChoiceLabel,L"Редактировать профиль"},std::pair{ProfileNameLabel,L"Название"},std::pair{ProfileFormatLabel,L"Выходной формат"},std::pair{ProfileQualityLabel,L"Качество"},std::pair{ProfileResourcesLabel,L"Ресурсы"},std::pair{ProfileSizeLabel,L"Размер"},std::pair{ProfileCodecLabel,L"Кодек"},std::pair{ProfileAccelerationLabel,L"Ускорение"},std::pair{ProfileMetadataLabel,L"Метаданные"}})label_control(item.first,item.second);
+        add(page,ProfileConsequences,L"EDIT",L"",WS_TABSTOP|ES_READONLY|ES_MULTILINE|ES_AUTOVSCROLL|WS_VSCROLL);
+        for(auto item:{std::pair{ProfileOcr,L"OCR сканов PDF → TXT"},std::pair{ProfileEnglish,L"Английский"},std::pair{ProfileRussian,L"Русский"},std::pair{ProfileAzerbaijani,L"Азербайджанский"}})add(page,item.first,L"BUTTON",item.second,WS_TABSTOP|BS_AUTOCHECKBOX);
+        for(auto pair:{std::pair{ProfileQuality,Quality},std::pair{ProfileResources,Resources},std::pair{ProfileCodec,Codec},std::pair{ProfileAcceleration,Acceleration},std::pair{ProfileMetadata,ImageMetadataChoice}}){
+            for(LRESULT i=0;i<SendMessageW(setting(pair.second),CB_GETCOUNT,0,0);++i){wchar_t value[256]{};SendMessageW(setting(pair.second),CB_GETLBTEXT,i,reinterpret_cast<LPARAM>(value));SendMessageW(setting(pair.first),CB_ADDSTRING,0,reinterpret_cast<LPARAM>(value));}
+        }
         settings_controls.push_back(add(window, SettingsError, L"STATIC", L"", SS_LEFT | SS_NOPREFIX));
         settings_controls.push_back(add(window, Defaults, L"BUTTON", L"По умолчанию", WS_TABSTOP));
         settings_controls.push_back(add(window, Apply, L"BUTTON", L"Сохранить настройки", WS_TABSTOP | BS_DEFPUSHBUTTON));
@@ -306,11 +324,82 @@ struct ControlPanel::Impl {
             std::all_of(settings_controls.begin(), settings_controls.end(), [](HWND control) { return control != nullptr; });
     }
 
+    ConversionProfile* editing_profile(){return profile_index>=0&&profile_index<static_cast<int>(draft.profiles.size())?&draft.profiles[profile_index]:nullptr;}
+    int profile_offset() const {
+        if(profile_index<0||profile_index>=static_cast<int>(draft.profiles.size()))return 480;
+        auto c=draft.profiles[profile_index].category;
+        int rows=c==Category::Image||c==Category::Video||c==Category::Pdf?3:c==Category::Audio?2:0;
+        return 640+74*rows;
+    }
+    void profile_hint(){
+        auto*p=editing_profile();if(!p){set_text(setting(ProfileConsequences),L"Выберите профиль для редактирования или создайте новый. Активный профиль применяется только к своему формату; остальные секторы используют общие параметры ниже. Изменения вступают в силу после «Сохранить настройки».");return;}
+        auto hint=profile_consequences(*p);auto configured=configured_formats(category_sample(p->category),draft);
+        if(std::find(configured.begin(),configured.end(),p->format)==configured.end())hint+=L"\r\nФормат скрыт в настройках колеса: профиль пока не применяется.";
+        else if(available_formats(category_sample(p->category),{p->format},[&](auto id){auto it=state.installed_modules.find(std::string(id));return it!=state.installed_modules.end()&&it->second;}).empty())hint+=L"\r\nНужный модуль недоступен: формат не появится в колесе до установки.";
+        set_text(setting(ProfileConsequences),hint);
+    }
+    bool save_profile_editor(bool feedback=true){
+        auto*p=editing_profile();if(!p)return true;auto candidate=*p;
+        candidate.name=text_of(setting(ProfileName));while(!candidate.name.empty()&&candidate.name.front()==L' ')candidate.name.erase(0,1);while(!candidate.name.empty()&&candidate.name.back()==L' ')candidate.name.pop_back();
+        auto f=SendMessageW(setting(ProfileFormat),CB_GETCURSEL,0,0);if(f<0||static_cast<size_t>(f)>=profile_format_order.size())return false;candidate.format=profile_format_order[f];
+        auto& o=candidate.options;auto c=candidate.category;bool okay=true;
+        if(c==Category::Image||c==Category::Video||c==Category::Audio){o.quality=static_cast<QualityPreset>(SendMessageW(setting(ProfileQuality),CB_GETCURSEL,0,0));o.resources=static_cast<ResourceMode>(SendMessageW(setting(ProfileResources),CB_GETCURSEL,0,0));}
+        if(c==Category::Image)okay=unsigned_value(setting(ProfileSize),o.image_max_dimension);
+        if(c==Category::Video){okay=unsigned_value(setting(ProfileSize),o.video_max_height);o.video_codec=static_cast<VideoCodec>(SendMessageW(setting(ProfileCodec),CB_GETCURSEL,0,0));o.video_acceleration=static_cast<VideoAcceleration>(SendMessageW(setting(ProfileAcceleration),CB_GETCURSEL,0,0));}
+        if(c==Category::Audio&&candidate.format!=Format::Flac&&candidate.format!=Format::Wav)okay=unsigned_value(setting(ProfileSize),o.audio_bitrate_kbps);
+        if(c==Category::Image)o.image_metadata=static_cast<ImageMetadata>(SendMessageW(setting(ProfileMetadata),CB_GETCURSEL,0,0));
+        if(c==Category::Pdf){if(candidate.format!=Format::Txt)okay=unsigned_value(setting(ProfileSize),o.pdf_dpi);else{o.pdf_ocr=Button_GetCheck(setting(ProfileOcr))==BST_CHECKED;o.ocr_languages.clear();for(auto pair:{std::pair{ProfileEnglish,"eng"},std::pair{ProfileRussian,"rus"},std::pair{ProfileAzerbaijani,"aze"}})if(Button_GetCheck(setting(pair.first))==BST_CHECKED){if(!o.ocr_languages.empty())o.ocr_languages+='+';o.ocr_languages+=pair.second;}}}
+        try{auto next=draft;next.profiles[profile_index]=candidate;if(!okay)throw std::runtime_error("number");validate_profiles(next);*p=std::move(candidate);return true;}
+        catch(...){if(feedback)settings_error(L"Профиль: проверьте уникальное имя (до 64 символов), размеры, языки и совместимость кодека/формата. Изменения оставлены в редакторе.");return false;}
+    }
+    void fill_profiles(){
+        rebuilding=true;auto c=categories[profile_category_index].category;profile_indices.clear();
+        SendMessageW(setting(ProfileCategory),CB_SETCURSEL,profile_category_index,0);
+        for(auto id:{ProfileChoice,ProfileActive}){SendMessageW(setting(id),CB_RESETCONTENT,0,0);SendMessageW(setting(id),CB_ADDSTRING,0,reinterpret_cast<LPARAM>(id==ProfileActive?L"Общие настройки":L"Выберите профиль…"));}
+        int selected=0,active=0;
+        for(size_t i=0;i<draft.profiles.size();++i)if(draft.profiles[i].category==c){profile_indices.push_back(static_cast<int>(i));auto index=static_cast<int>(profile_indices.size());for(auto id:{ProfileChoice,ProfileActive})SendMessageW(setting(id),CB_ADDSTRING,0,reinterpret_cast<LPARAM>(draft.profiles[i].name.c_str()));if(static_cast<int>(i)==profile_index)selected=index;if(auto a=draft.active_profiles.find(c);a!=draft.active_profiles.end()&&a->second==draft.profiles[i].id)active=index;}
+        SendMessageW(setting(ProfileChoice),CB_SETCURSEL,selected,0);SendMessageW(setting(ProfileActive),CB_SETCURSEL,active,0);
+        auto*p=editing_profile();EnableWindow(setting(ProfileCopy),p!=nullptr);EnableWindow(setting(ProfileDelete),p!=nullptr);
+        if(p){set_text(setting(ProfileName),p->name);profile_format_order=formats_for(category_sample(c));SendMessageW(setting(ProfileFormat),CB_RESETCONTENT,0,0);int chosen=0;for(size_t i=0;i<profile_format_order.size();++i){auto f=profile_format_order[i];SendMessageW(setting(ProfileFormat),CB_ADDSTRING,0,reinterpret_cast<LPARAM>(label(f)));if(f==p->format)chosen=static_cast<int>(i);}SendMessageW(setting(ProfileFormat),CB_SETCURSEL,chosen,0);
+            auto&o=p->options;for(auto pair:{std::pair{ProfileQuality,static_cast<int>(o.quality)},std::pair{ProfileResources,static_cast<int>(o.resources)},std::pair{ProfileCodec,static_cast<int>(o.video_codec)},std::pair{ProfileAcceleration,static_cast<int>(o.video_acceleration)},std::pair{ProfileMetadata,static_cast<int>(o.image_metadata)}})SendMessageW(setting(pair.first),CB_SETCURSEL,pair.second,0);
+            auto value=c==Category::Image?o.image_max_dimension:c==Category::Video?o.video_max_height:c==Category::Audio?o.audio_bitrate_kbps:o.pdf_dpi;set_text(setting(ProfileSize),std::to_wstring(value));Button_SetCheck(setting(ProfileOcr),o.pdf_ocr?BST_CHECKED:BST_UNCHECKED);for(auto pair:{std::pair{ProfileEnglish,"eng"},std::pair{ProfileRussian,"rus"},std::pair{ProfileAzerbaijani,"aze"}})Button_SetCheck(setting(pair.first),o.ocr_languages.find(pair.second)!=std::string::npos?BST_CHECKED:BST_UNCHECKED);
+        }
+        rebuilding=false;profile_hint();layout();
+    }
+    void new_profile(int kind,bool copy=false){
+        if(draft.profiles.size()>=32){settings_error(L"Можно сохранить до 32 профилей.");return;}
+        Settings current;if(!read_settings(current))return;draft=std::move(current);
+        auto p=make_profile(categories[profile_category_index].category,draft.conversion,kind);if(copy){if(auto*old=editing_profile()){auto id=p.id;p=*old;p.id=id;p.name+=L" копия";}}
+        auto base=p.name;for(unsigned n=1;;++n){bool exists=std::any_of(draft.profiles.begin(),draft.profiles.end(),[&](auto&v){return v.category==p.category&&CompareStringOrdinal(v.name.c_str(),-1,p.name.c_str(),-1,TRUE)==CSTR_EQUAL;});if(!exists)break;auto suffix=L" "+std::to_wstring(n);p.name=base.substr(0,64-suffix.size())+suffix;}
+        if(p.name.size()>64)p.name=p.name.substr(0,64);draft.profiles.push_back(std::move(p));profile_index=static_cast<int>(draft.profiles.size())-1;for(size_t i=0;i<categories.size();++i)if(categories[i].category==draft.profiles.back().category)profile_category_index=static_cast<int>(i);fill_profiles();settings_error(L"Профиль создан в черновике. Выберите его активным и сохраните настройки.");
+    }
+    void layout_profiles(int width){
+        const int inside=width-56,half=(inside-20)/2,right=48+half,third=(inside-16)/3;
+        auto place=[&](int id,int x,int y,int w,int h){ShowWindow(setting(id),SW_SHOW);move_setting(id,x,y,w,h);};
+        auto row=[&](int l,int ctl,int x,int y,int w){place(l,x,y,w,22);place(ctl,x,y+26,w,ctl==ProfileName||ctl==ProfileSize?34:200);};
+        row(ProfileCategoryLabel,ProfileCategory,28,138,half);row(ProfileActiveLabel,ProfileActive,right,138,half);row(ProfileChoiceLabel,ProfileChoice,28,212,inside);
+        for(auto pair:{std::pair{ProfileNew,0},std::pair{ProfileCopy,1},std::pair{ProfileDelete,2}})place(pair.first,28+(third+8)*pair.second,286,third,36);
+        for(auto pair:{std::pair{ProfilePhoto,0},std::pair{ProfileVideo,1},std::pair{ProfileAudio,2}})place(pair.first,28+(third+8)*pair.second,334,third,46);
+        auto*p=editing_profile();if(!p){place(ProfileConsequences,28,400,inside,142);return;}
+        row(ProfileNameLabel,ProfileName,28,394,inside);row(ProfileFormatLabel,ProfileFormat,28,468,inside);
+        int y=542;auto c=p->category;
+        if(c==Category::Image||c==Category::Video||c==Category::Audio){row(ProfileQualityLabel,ProfileQuality,28,y,half);row(ProfileResourcesLabel,ProfileResources,right,y,half);y+=74;}
+        EnableWindow(setting(ProfileQuality),!(c==Category::Audio&&(p->format==Format::Wav||p->format==Format::Flac)));
+        if(c==Category::Image||c==Category::Video||c==Category::Audio||c==Category::Pdf){
+            set_text(setting(ProfileSizeLabel),c==Category::Image?L"Сторона, px (0 — исходная)":c==Category::Video?L"Высота, px (0 — исходная)":c==Category::Audio?L"Битрейт, кбит/с (0 — авто)":L"Растровый экспорт, DPI");
+            row(ProfileSizeLabel,ProfileSize,28,y,half);EnableWindow(setting(ProfileSize),!(c==Category::Audio&&(p->format==Format::Wav||p->format==Format::Flac))&&!(c==Category::Pdf&&p->format==Format::Txt));
+            if(c==Category::Video)row(ProfileCodecLabel,ProfileCodec,right,y,half);y+=74;
+        }
+        if(c==Category::Image){row(ProfileMetadataLabel,ProfileMetadata,28,y,inside);y+=74;}
+        if(c==Category::Video){row(ProfileAccelerationLabel,ProfileAcceleration,28,y,inside);y+=74;}
+        if(c==Category::Pdf){place(ProfileOcr,28,y,inside,30);place(ProfileEnglish,28,y+40,half,30);place(ProfileRussian,right,y+40,half,30);place(ProfileAzerbaijani,28,y+78,inside,30);for(auto id:{ProfileOcr,ProfileEnglish,ProfileRussian,ProfileAzerbaijani})EnableWindow(setting(id),p->format==Format::Txt);y+=148;}
+        place(ProfileConsequences,28,y+8,inside,150);
+    }
     int section_height() const {
         RECT rect{}; GetClientRect(page,&rect);
         const bool narrow=MulDiv(rect.right,96,static_cast<int>(dpi))<556;
         constexpr int heights[]{554,848,542,554,510};
-        return heights[settings_section]+(settings_section==1&&narrow?36:0);
+        return heights[settings_section]+(settings_section==1?profile_offset()+(narrow?36:0):0);
     }
     void layout_page() {
         if (!page) return;
@@ -321,6 +410,7 @@ struct ControlPanel::Impl {
             {AutoUpdate,UpdateLabel,UpdateChannel,UpdateInfo,CheckUpdate,InstallUpdate,LaterUpdate},
             {Modules,ModuleInfo,InstallModule,RemoveModule,CancelModule,RefreshModules}};
         for(size_t i=0;i<groups.size();++i) for(auto id:groups[i]) ShowWindow(setting(id),i==static_cast<size_t>(settings_section)?SW_SHOW:SW_HIDE);
+        for(int id=400;id<=455;++id)if(setting(id))ShowWindow(setting(id),SW_HIDE);
         RECT rect{};GetClientRect(page,&rect);
         const int width=MulDiv(rect.right,96,static_cast<int>(dpi)), inside=width-56, half=(inside-20)/2, right=48+half;
         set_text(setting(SectionTitle),section_names[settings_section]);set_text(setting(SectionHint),section_hints[settings_section]);
@@ -334,17 +424,22 @@ struct ControlPanel::Impl {
             move_setting(OutputHint,28,440,inside,34);move_setting(ExportDiagnostics,28,498,242,36);
             EnableWindow(setting(ExportDiagnostics),static_cast<bool>(actions.export_diagnostics));
         } else if(settings_section==1) {
+            const int offset=profile_offset();
             cards={{92,264,L"Качество и размеры"},{374,120,L"Кодирование видео"},{512,154,L"Метаданные изображений"},{684,width<556?180:144,L"Распознавание сканов PDF"}};
+            for(auto&card:cards)card.top+=offset;
+            cards.insert(cards.begin(),{92,offset-18,L"Профили: повторяемые параметры"});
+            layout_profiles(width);
+            const auto conv_move=[&](int id,int x,int y,int w,int h){move_setting(id,x,y+offset,w,h);};
             for(const auto& row : {std::array<int,5>{QualityLabel,Quality,ResourcesLabel,Resources,138},
                 std::array<int,5>{ImageLabel,ImageSize,VideoLabel,VideoSize,212},std::array<int,5>{AudioLabel,AudioBitrate,PdfLabel,PdfDpi,286},
                 std::array<int,5>{CodecLabel,Codec,AccelerationLabel,Acceleration,420}}) {
-                move_setting(row[0],28,row[4],half,22);move_setting(row[1],28,row[4]+26,half,row[1]==Quality||row[1]==Codec?180:34);
-                move_setting(row[2],right,row[4],half,22);move_setting(row[3],right,row[4]+26,half,row[3]==Resources||row[3]==Acceleration?180:34);
+                conv_move(row[0],28,row[4],half,22);conv_move(row[1],28,row[4]+26,half,row[1]==Quality||row[1]==Codec?180:34);
+                conv_move(row[2],right,row[4],half,22);conv_move(row[3],right,row[4]+26,half,row[3]==Resources||row[3]==Acceleration?180:34);
             }
-            move_setting(ImageMetadataLabel,28,554,inside,40);move_setting(ImageMetadataChoice,28,604,inside,160);
-            move_setting(PdfOcr,28,730,inside,30);move_setting(OcrEnglish,28,774,width<556?160:inside/3,30);
-            move_setting(OcrRussian,width<556?202:28+inside/3,774,width<556?160:inside/3,30);
-            move_setting(OcrAzerbaijani,width<556?28:28+2*(inside/3),width<556?810:774,width<556?inside:inside/3,30);
+            conv_move(ImageMetadataLabel,28,554,inside,40);conv_move(ImageMetadataChoice,28,604,inside,160);
+            conv_move(PdfOcr,28,730,inside,30);conv_move(OcrEnglish,28,774,width<556?160:inside/3,30);
+            conv_move(OcrRussian,width<556?202:28+inside/3,774,width<556?160:inside/3,30);
+            conv_move(OcrAzerbaijani,width<556?28:28+2*(inside/3),width<556?810:774,width<556?inside:inside/3,30);
         } else if(settings_section==2) {
             cards={{92,430,L"Выбор форматов"}};
             move_setting(WheelLabel,28,136,inside,24);move_setting(WheelHint,28,170,inside,44);
@@ -537,9 +632,10 @@ struct ControlPanel::Impl {
         Button_SetCheck(setting(AutoShow), draft.auto_show_progress ? BST_CHECKED : BST_UNCHECKED);
         SendMessageW(setting(CategoryChoice), CB_SETCURSEL, category_index, 0);
         rebuilding = false;
-        fill_formats(); settings_error(L"");
+        profile_index=-1;fill_profiles();fill_formats(); settings_error(L"");
     }
     bool read_settings(Settings& result) {
+        if(!save_profile_editor())return false;
         save_visible_formats();
         result = draft;
         const auto notifications=SendMessageW(setting(Notifications),CB_GETCURSEL,0,0);
@@ -582,7 +678,7 @@ struct ControlPanel::Impl {
             result.conversion.ocr_languages += language.second;
         }
         if (result.conversion.ocr_languages.empty()) { settings_error(L"Выберите хотя бы один язык распознавания сканов."); return false; }
-        try { validate_options(result.conversion); }
+        try { validate_options(result.conversion); validate_profiles(result); }
         catch (...) { settings_error(L"Проверьте размеры, битрейт и DPI: одно из значений выходит за допустимый диапазон."); return false; }
         auto output = text_of(setting(Output));
         if (output.find_first_of(L"\r\n\"<>|?*") != std::wstring::npos) { settings_error(L"Путь к папке содержит недопустимые символы."); return false; }
@@ -639,6 +735,23 @@ struct ControlPanel::Impl {
     }
     void command(int id, int notification) {
         if (rebuilding) return;
+        if((id==ProfileCategory||id==ProfileChoice||id==ProfileActive)&&notification==CBN_SELCHANGE){
+            const int chosen=static_cast<int>(SendMessageW(setting(id),CB_GETCURSEL,0,0));
+            if(!save_profile_editor()){
+                int old=0;if(id==ProfileCategory)old=profile_category_index;
+                else for(size_t i=0;i<profile_indices.size();++i){auto& p=draft.profiles[profile_indices[i]];if(id==ProfileChoice&&profile_indices[i]==profile_index)old=static_cast<int>(i)+1;if(id==ProfileActive){auto a=draft.active_profiles.find(categories[profile_category_index].category);if(a!=draft.active_profiles.end()&&a->second==p.id)old=static_cast<int>(i)+1;}}
+                SendMessageW(setting(id),CB_SETCURSEL,old,0);return;
+            }
+            if(id==ProfileCategory){profile_category_index=std::clamp(chosen,0,6);profile_index=-1;}
+            else if(id==ProfileChoice)profile_index=chosen>0&&static_cast<size_t>(chosen)<=profile_indices.size()?profile_indices[chosen-1]:-1;
+            else{auto c=categories[profile_category_index].category;if(chosen<=0)draft.active_profiles.erase(c);else if(static_cast<size_t>(chosen)<=profile_indices.size())draft.active_profiles[c]=draft.profiles[profile_indices[chosen-1]].id;}
+            fill_profiles();return;
+        }
+        if(notification==BN_CLICKED&&(id==ProfileNew||id==ProfileCopy||id==ProfilePhoto||id==ProfileVideo||id==ProfileAudio)){new_profile(id==ProfilePhoto?0:id==ProfileVideo?1:id==ProfileAudio?2:-1,id==ProfileCopy);return;}
+        if(notification==BN_CLICKED&&id==ProfileDelete){if(auto*p=editing_profile()){const auto c=p->category;auto a=draft.active_profiles.find(c);if(a!=draft.active_profiles.end()&&a->second==p->id)draft.active_profiles.erase(a);draft.profiles.erase(draft.profiles.begin()+profile_index);profile_index=-1;fill_profiles();settings_error(L"Профиль удалён из черновика. Примените сохранение.");}return;}
+        if(((id==ProfileName||id==ProfileSize)&&notification==EN_CHANGE)||((id==ProfileFormat||id>=ProfileQuality&&id<=ProfileMetadata)&&notification==CBN_SELCHANGE)||((id>=ProfileOcr&&id<=ProfileAzerbaijani)&&notification==BN_CLICKED)){
+            if(save_profile_editor(false)){profile_hint();if(id==ProfileFormat)layout();}else set_text(setting(ProfileConsequences),L"Проверьте параметры профиля: есть недопустимое значение. Черновик сохранён в редакторе, применение заблокировано.");return;
+        }
         if (id == IDCANCEL) { ShowWindow(window, SW_HIDE); return; }
         if (id == IDOK) { if (settings_visible) apply(); return; }
         if (id == CategoryChoice && notification == CBN_SELCHANGE) {
@@ -674,7 +787,7 @@ struct ControlPanel::Impl {
         if (notification != BN_CLICKED) return;
         if (id == Browse) { browse(); return; }
         if (id == Apply) { apply(); return; }
-        if (id == Defaults) { load_draft(Settings{}); settings_error(L"Настройки по умолчанию выбраны. Нажмите «Сохранить настройки»."); return; }
+        if (id == Defaults) { if(!save_profile_editor())return;Settings defaults;defaults.profiles=draft.profiles;load_draft(defaults); settings_error(L"Общие настройки восстановлены, активные профили отключены. Созданные профили сохранены. Нажмите «Сохранить настройки»."); return; }
         if (id == MoveUp || id == MoveDown) { move_format(id == MoveUp ? -1 : 1); return; }
         HWND button = main_control(id);
         if (!button || !IsWindowEnabled(button)) return;

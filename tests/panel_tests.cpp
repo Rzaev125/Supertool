@@ -1,4 +1,5 @@
 #include "control_panel.h"
+#include "profiles.h"
 #include <commctrl.h>
 #include <windowsx.h>
 #include <ole2.h>
@@ -456,6 +457,34 @@ int main(int argc,char** argv) {
         check(saved_settings.automatic_updates&&saved_settings.update_channel==preferences.update_channel,"disabled controls preserve preferences");
         state.online_updates_allowed=true;state.module_downloads_allowed=true;panel.update(state);
         check(IsWindowEnabled(child(window,AutoUpdate))&&IsWindowEnabled(child(window,131))&&IsWindowEnabled(child(window,142)),"release policy restores actions");
+    });
+    run("profile editor saves explicit draft and defaults retains definitions", [&] {
+        panel.set_settings(Settings{});panel.show(true,false);
+        auto rail=child(window,227);SendMessageW(rail,LB_SETCURSEL,1,0);SendMessageW(window,WM_COMMAND,MAKEWPARAM(227,LBN_SELCHANGE),reinterpret_cast<LPARAM>(rail));
+        check(IsWindowEnabled(child(window,408)),"template disabled");
+        SendMessageW(GetParent(child(window,408)),WM_COMMAND,MAKEWPARAM(408,BN_CLICKED),reinterpret_cast<LPARAM>(child(window,408))); // Photo template
+        check(control_text(child(window,403))==L"Фото для отправки","template editor missing");
+        SetWindowTextW(child(window,403),L"Фото Bakı");
+        SetWindowTextW(child(window,422),L"1200");
+        auto active=child(window,402);SendMessageW(active,CB_SETCURSEL,1,0);SendMessageW(GetParent(active),WM_COMMAND,MAKEWPARAM(402,CBN_SELCHANGE),reinterpret_cast<LPARAM>(active));
+        panel.update({});check(control_text(child(window,403))==L"Фото Bakı","progress overwrites profile");
+        auto before=saved;click(child(window,Apply));check(saved==before+1&&saved_settings.profiles.size()==1,"profile not saved");
+        check(saved_settings.profiles[0].options.image_max_dimension==1200&&!saved_settings.active_profiles.empty(),"profile values/active lost");
+        check(saved_settings.conversion.image_max_dimension==0,"profile overwrote common options");
+        SetWindowTextW(child(window,422),L"bad");auto category=child(window,400);SendMessageW(category,CB_SETCURSEL,1,0);SendMessageW(GetParent(category),WM_COMMAND,MAKEWPARAM(400,CBN_SELCHANGE),reinterpret_cast<LPARAM>(category));
+        check(SendMessageW(category,CB_GETCURSEL,0,0)==0&&control_text(child(window,422))==L"bad","invalid switch discarded profile");
+        SetWindowTextW(child(window,422),L"1200");click(child(window,Defaults));click(child(window,Apply));
+        check(saved_settings.profiles.size()==1&&saved_settings.active_profiles.empty(),"defaults deleted profiles or retained active");
+    });
+    run("profile copy deletion and Unicode draft survive navigation",[&]{
+        auto command=[&](int id,int code){auto ctl=child(window,id);SendMessageW(GetParent(ctl),WM_COMMAND,MAKEWPARAM(id,code),reinterpret_cast<LPARAM>(ctl));};
+        command(408,BN_CLICKED);SetWindowTextW(child(window,403),L"Əlifba");command(406,BN_CLICKED);click(child(window,Apply));check(saved_settings.profiles.size()==3,"duplicate lost definitions");
+        command(407,BN_CLICKED);click(child(window,Apply));check(saved_settings.profiles.size()==2,"delete failed");
+        command(409,BN_CLICKED);check(control_text(child(window,403))==L"Видео 1080p","video template");
+        check((GetWindowLongPtrW(child(window,423),GWL_STYLE)&WS_VISIBLE)!=0&&(GetWindowLongPtrW(child(window,425),GWL_STYLE)&WS_VISIBLE)==0,"irrelevant metadata visible for video");
+        for(int dpi:{96,144,192}){RECT proposed{0,0,MulDiv(740,dpi,96),MulDiv(790,dpi,96)};SendMessageW(window,WM_DPICHANGED,MAKELONG(dpi,dpi),reinterpret_cast<LPARAM>(&proposed));auto page=GetParent(child(window,403));SendMessageW(page,WM_VSCROLL,SB_TOP,0);RECT client{};GetClientRect(page,&client);for(int id:{400,402,405,406,407,408,409,410}){RECT r{};GetWindowRect(child(window,id),&r);MapWindowPoints(nullptr,page,reinterpret_cast<POINT*>(&r),2);check(r.left>=0&&r.right<=client.right,"profile controls overflow at DPI");}}
+        panel.update({});check(control_text(child(window,403))==L"Видео 1080p","profile draft changed by progress");
+        click(child(window,Apply));check(saved_settings.profiles.size()==3,"category profile save");
     });
     panel.shutdown();
     check(!panel.handle() && !IsWindow(window), "shutdown destroys native window");

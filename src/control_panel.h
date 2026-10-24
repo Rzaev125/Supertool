@@ -25,6 +25,7 @@ struct PanelState {
     std::vector<std::wstring> modules;
     std::wstring module_detail;
     bool modules_busy=false,modules_allowed=true;
+    std::map<std::string,bool> installed_modules;
 };
 struct PanelActions {
     std::function<void()> cancel, pause_queue, clear_queue, export_diagnostics, clear_history;
