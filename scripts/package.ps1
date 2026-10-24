@@ -15,7 +15,7 @@ Copy-Item -LiteralPath $exe -Destination $destination
 Copy-Item -LiteralPath (Join-Path $root 'README.md') -Destination $destination
 Copy-Item -LiteralPath (Join-Path $root 'resources\START.txt') -Destination $destination
 $docs=Join-Path $destination 'docs';[void][IO.Directory]::CreateDirectory($docs)
-foreach($file in @('conversion-profiles.md','release-1.0.0.md','local-development.md')){Copy-Item -LiteralPath (Join-Path $root ('docs\'+$file)) -Destination $docs}
+foreach($file in @('conversion-profiles.md','release-1.0.0.md','local-development.md','branding.md')){Copy-Item -LiteralPath (Join-Path $root ('docs\'+$file)) -Destination $docs}
 foreach($file in @('update-key-setup.md','photo-metadata.md','release-0.15.0.md','review-0.15.0.md','acceptance-0.15.0.md','release-0.14.0.md','avif-transforms.md','hdr-images.md','review-0.14.0.md','acceptance-0.14.0.md','review-0.13.0.md','acceptance-0.13.0.md','video-codecs.md','image-orientation.md','review-0.12.0.md','acceptance-0.12.0.md','review-0.11.0.md','acceptance-0.11.0.md','review-0.10.0.md','acceptance-0.10.0.md','animated-images.md','performance-0.9.md','performance-0.9.json','modules-0.9.md','modules.md','heic-module.md','presentation-module.md','ocr-module.md','installer.md','hardware-video.md','updates.md','signing.md','recovery.md','acceptance-0.7.0.md','acceptance-0.8.0.md','acceptance-0.9.0.md')){
  Copy-Item -LiteralPath (Join-Path $root ('docs\'+$file)) -Destination $docs
 }
